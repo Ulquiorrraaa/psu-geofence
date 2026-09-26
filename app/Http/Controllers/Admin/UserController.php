@@ -32,7 +32,7 @@ class UserController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'unique:users,email'],
             'password' => ['required', 'string', 'min:6'],
-            'role' => ['required', 'in:Student,Instructor,Guard,Admin'],
+            'role' => ['required', 'in:student,instructor,guard,admin'],
             'year' => ['nullable', 'string'],
             'section' => ['nullable', 'string'],
             'adviser' => ['nullable', 'string'],

@@ -11,42 +11,37 @@ use Laravel\Fortify\Contracts\CreatesNewUsers;
 
 class CreateNewUser implements CreatesNewUsers
 {
-
     use PasswordValidationRules, ProfileValidationRules;
-
 
     public function create(array $input): User
     {
 
-        Validator::make($input,[
+        Validator::make($input, [
 
             ...$this->profileRules(),
 
-            'role'=>[
-                'required',
-                'in:student,instructor'
+            'role' => [
+                'sometimes',
+                'in:student,instructor',
             ],
 
-            'password'=>$this->passwordRules(),
+            'password' => $this->passwordRules(),
 
         ])->validate();
 
-
-
         return User::create([
 
-            'name'=>$input['name'],
+            'name' => $input['name'],
 
-            'email'=>$input['email'],
+            'email' => $input['email'],
 
-            'password'=>Hash::make(
+            'password' => Hash::make(
                 $input['password']
             ),
 
-            'role'=>$input['role'],
+            'role' => $input['role'] ?? 'student',
 
         ]);
 
     }
-
 }

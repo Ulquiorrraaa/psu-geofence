@@ -80,9 +80,7 @@ const systemFeatures = [
     },
 ];
 
-export default function Welcome({
-    canRegister = true,
-}: WelcomeProps) {
+export default function Welcome({ canRegister = true }: WelcomeProps) {
     const { auth } = usePage<PageProps>().props;
     const user = auth?.user;
 
@@ -102,13 +100,12 @@ export default function Welcome({
             <div className="min-h-screen bg-[#970027] text-white [color-scheme:light]">
                 {/* Decorative background */}
                 <div className="pointer-events-none fixed inset-0 overflow-hidden">
-                    <div className="absolute -right-40 -top-40 h-[500px] w-[500px] rounded-full bg-white/[0.04]" />
+                    <div className="absolute -top-40 -right-40 h-[500px] w-[500px] rounded-full bg-white/[0.04]" />
                     <div className="absolute -bottom-64 -left-40 h-[550px] w-[550px] rounded-full bg-[#ffd600]/[0.06]" />
                 </div>
 
                 <main className="relative mx-auto flex min-h-screen max-w-[1500px] items-center px-5 py-8 sm:px-8 lg:px-12 lg:py-10">
                     <div className="grid w-full items-center gap-10 lg:grid-cols-[0.9fr_1.1fr] xl:gap-16">
-
                         {/* LEFT SECTION */}
                         <section>
                             {/* Logo */}
@@ -124,11 +121,11 @@ export default function Welcome({
                                 </span>
 
                                 <span>
-                                    <span className="block text-xl font-bold leading-tight text-white">
+                                    <span className="block text-xl leading-tight font-bold text-white">
                                         PSU Attendance
                                     </span>
 
-                                    <span className="mt-1 block text-xs font-semibold uppercase tracking-[0.16em] text-[#f5a8ba]">
+                                    <span className="mt-1 block text-xs font-semibold tracking-[0.16em] text-[#f5a8ba] uppercase">
                                         Attendance Monitoring System
                                     </span>
                                 </span>
@@ -139,7 +136,7 @@ export default function Welcome({
                                 Pampanga State University – Lubao Campus
                             </div>
 
-                            <h1 className="max-w-3xl text-4xl font-bold leading-[1.12] text-white sm:text-5xl xl:text-6xl">
+                            <h1 className="max-w-3xl text-4xl leading-[1.12] font-bold text-white sm:text-5xl xl:text-6xl">
                                 Automated Student Attendance
                                 <span className="text-[#ffd600]">
                                     {' '}

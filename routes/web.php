@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\InstructorDashboardController;
 use App\Http\Controllers\ScheduleController;
+use App\Http\Controllers\StudentPortalController;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -181,37 +182,21 @@ Route::middleware(['auth', 'verified', 'admin'])
         )->name('users.destroy');
     });
 
-
-    /*
+/*
 |--------------------------------------------------------------------------
 | Student Routes
 |--------------------------------------------------------------------------
 */
 
-
-Route::middleware([
-    'auth',
-    'verified',
-    'student'
-])
-->prefix('student')
-->group(function(){
-
-
-    Route::get(
-        '/dashboard',
-        function(){
-
-            return inertia(
-                'student/Dashboard'
-            );
-
-        }
-    )
-    ->name('student.dashboard');
-
-
-});
+Route::middleware(['auth', 'verified', 'student'])
+    ->prefix('student')
+    ->name('student.')
+    ->group(function () {
+        Route::inertia('/dashboard', 'student/Dashboard')->name('dashboard');
+        Route::get('/schedules', [StudentPortalController::class, 'schedules'])->name('schedules');
+        Route::get('/attendance', [StudentPortalController::class, 'attendance'])->name('attendance');
+        Route::get('/profile', [StudentPortalController::class, 'profile'])->name('profile');
+    });
 
 /*
 |--------------------------------------------------------------------------

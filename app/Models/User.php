@@ -33,13 +33,23 @@ class User extends Authenticatable
         'remember_token',
     ];
 
-   public function schedules()
-{
-    return $this->hasMany(Schedule::class, 'user_id');
-}
+    public function getRoleAttribute(?string $value): ?string
+    {
+        return $value === null ? null : strtolower(trim($value));
+    }
 
-public function attendances()
-{
-    return $this->hasMany(Attendance::class, 'student_id');
-}
+    public function setRoleAttribute(string $value): void
+    {
+        $this->attributes['role'] = strtolower(trim($value));
+    }
+
+    public function schedules()
+    {
+        return $this->hasMany(Schedule::class, 'user_id');
+    }
+
+    public function attendances()
+    {
+        return $this->hasMany(Attendance::class, 'student_id');
+    }
 }

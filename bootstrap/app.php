@@ -56,7 +56,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 return route('home');
             }
 
-            return match ($user->role) {
+            return match (strtolower(trim((string) $user->role))) {
                 'admin' => route('admin.dashboard'),
                 'instructor' => route('dashboard'),
                 'student' => route('student.dashboard'),

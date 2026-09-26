@@ -11,9 +11,7 @@ class AdminDashboardController extends Controller
     public function index()
     {
         $totalStudents = User::where('role', 'student')->count();
-
         $totalInstructors = User::where('role', 'instructor')->count();
-
         $totalGuards = User::where('role', 'guard')->count();
 
         return Inertia::render('admin/Dashboard', [
@@ -27,27 +25,27 @@ class AdminDashboardController extends Controller
             'weeklyAttendance' => [
                 [
                     'day' => 'Mon',
-                    'present' => User::where('role', 'student')->count(),
+                    'present' => $totalStudents,
                     'absent' => 0,
                 ],
                 [
                     'day' => 'Tue',
-                    'present' => User::where('role', 'student')->count(),
+                    'present' => $totalStudents,
                     'absent' => 0,
                 ],
                 [
                     'day' => 'Wed',
-                    'present' => User::where('role', 'student')->count(),
+                    'present' => $totalStudents,
                     'absent' => 0,
                 ],
                 [
                     'day' => 'Thu',
-                    'present' => User::where('role', 'student')->count(),
+                    'present' => $totalStudents,
                     'absent' => 0,
                 ],
                 [
                     'day' => 'Fri',
-                    'present' => User::where('role', 'student')->count(),
+                    'present' => $totalStudents,
                     'absent' => 0,
                 ],
             ],
@@ -56,39 +54,39 @@ class AdminDashboardController extends Controller
             'studentTraffic' => [
                 [
                     'time' => '8AM',
-                    'students' => User::where('role', 'student')->count(),
+                    'students' => $totalStudents,
                 ],
                 [
                     'time' => '9AM',
-                    'students' => User::where('role', 'student')->count(),
+                    'students' => $totalStudents,
                 ],
                 [
                     'time' => '10AM',
-                    'students' => User::where('role', 'student')->count(),
+                    'students' => $totalStudents,
                 ],
                 [
                     'time' => '11AM',
-                    'students' => User::where('role', 'student')->count(),
+                    'students' => $totalStudents,
                 ],
                 [
                     'time' => '12PM',
-                    'students' => User::where('role', 'student')->count(),
+                    'students' => $totalStudents,
                 ],
                 [
                     'time' => '1PM',
-                    'students' => User::where('role', 'student')->count(),
+                    'students' => $totalStudents,
                 ],
                 [
                     'time' => '2PM',
-                    'students' => User::where('role', 'student')->count(),
+                    'students' => $totalStudents,
                 ],
                 [
                     'time' => '3PM',
-                    'students' => User::where('role', 'student')->count(),
+                    'students' => $totalStudents,
                 ],
                 [
                     'time' => '4PM',
-                    'students' => User::where('role', 'student')->count(),
+                    'students' => $totalStudents,
                 ],
             ],
 

@@ -16,9 +16,11 @@ class InstructorMiddleware
             return redirect()->route('login');
         }
 
-        if ($user->role !== 'instructor') {
+        $role = strtolower(trim((string) $user->role));
 
-            return match ($user->role) {
+        if ($role !== 'instructor') {
+
+            return match ($role) {
                 'admin' => redirect()->route('admin.dashboard'),
                 'student' => redirect()->route('student.dashboard'),
                 default => redirect()->route('home'),

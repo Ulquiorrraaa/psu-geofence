@@ -18,7 +18,7 @@ return new class extends Migration
            $table->timestamp('email_verified_at')->nullable();
            $table->string('password');
 
-           $table->string('role')->default('instructor');
+           $table->string('role')->default('student');
            $table->string('year')->nullable();
            $table->string('section')->nullable();
            $table->string('adviser')->nullable();

@@ -38,6 +38,7 @@ interface RecentActivity {
 }
 
 interface PageProps {
+    [key: string]: unknown;
     stats: Stats;
     weeklyAttendance: WeeklyAttendance[];
     studentTraffic: StudentTraffic[];
@@ -219,7 +220,9 @@ function WeeklyTooltip({ active, payload, label }: any) {
     if (active && payload && payload.length) {
         return (
             <div className="rounded-lg border bg-white p-4 shadow-md">
-                <p className="mb-2 text-lg font-semibold text-gray-950">{label}</p>
+                <p className="mb-2 text-lg font-semibold text-gray-950">
+                    {label}
+                </p>
 
                 <p className="text-emerald-600">
                     present : {payload[0]?.value ?? 0}
@@ -239,7 +242,9 @@ function TrafficTooltip({ active, payload, label }: any) {
     if (active && payload && payload.length) {
         return (
             <div className="rounded-lg border bg-white p-4 shadow-md">
-                <p className="mb-2 text-lg font-semibold text-gray-950">{label}</p>
+                <p className="mb-2 text-lg font-semibold text-gray-950">
+                    {label}
+                </p>
 
                 <p className="text-[#8b2f17]">
                     students : {payload[0]?.value ?? 0}
@@ -280,9 +285,8 @@ function StatCard({
                 <p className="text-sm text-gray-500">{footer}</p>
             </div>
 
-            <div className={`rounded-xl p-4 text-white ${color}`}>
-                {icon}
-            </div>
+            <div className={`rounded-xl p-4 text-white ${color}`}>{icon}</div>
         </div>
     );
-}``
+}
+``;
