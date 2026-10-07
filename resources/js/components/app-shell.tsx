@@ -1,5 +1,6 @@
 import { usePage } from '@inertiajs/react';
 import type { ReactNode } from 'react';
+
 import { SidebarProvider } from '@/components/ui/sidebar';
 import type { AppVariant } from '@/types';
 
@@ -8,8 +9,14 @@ type Props = {
     variant?: AppVariant;
 };
 
+type PageProps = {
+    sidebarOpen?: boolean;
+
+    [key: string]: unknown;
+};
+
 export function AppShell({ children, variant = 'sidebar' }: Props) {
-    const isOpen = usePage().props.sidebarOpen;
+    const { sidebarOpen } = usePage<PageProps>().props;
 
     if (variant === 'header') {
         return (
@@ -17,5 +24,11 @@ export function AppShell({ children, variant = 'sidebar' }: Props) {
         );
     }
 
-    return <SidebarProvider defaultOpen={isOpen}>{children}</SidebarProvider>;
+    return (
+        <SidebarProvider
+            defaultOpen={typeof sidebarOpen === 'boolean' ? sidebarOpen : true}
+        >
+            {children}
+        </SidebarProvider>
+    );
 }

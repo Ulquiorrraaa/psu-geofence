@@ -1,6 +1,7 @@
 import { Head, usePage } from '@inertiajs/react';
-import { useMemo, useState } from 'react';
 import { Clock, Download, Filter, MapPin, Search } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { csvCell } from '@/lib/csv';
 
 type Status = 'Present' | 'Absent' | 'Late';
 
@@ -77,7 +78,7 @@ export default function Attendance() {
 
         const csvContent = [
             headers.join(','),
-            ...rows.map((row) => row.map((item) => `"${item}"`).join(',')),
+            ...rows.map((row) => row.map(csvCell).join(',')),
         ].join('\n');
 
         const blob = new Blob([csvContent], {
@@ -98,32 +99,32 @@ export default function Attendance() {
         <>
             <Head title="Class Attendance" />
 
-            <div className="min-h-screen bg-[#7b0000] p-6 text-white">
-                <div className="mb-8 flex items-center justify-between">
+            <div className="min-h-full bg-[#f7f8fa] p-5 text-gray-900 sm:p-7">
+                <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                     <div>
-                        <h1 className="text-4xl font-bold">
+                        <h1 className="text-3xl font-bold tracking-tight text-[#8f001f]">
                             Class Attendance
                         </h1>
 
-                        <p className="text-xl text-red-100">
+                        <p className="mt-1 text-base text-gray-600">
                             Monitor student attendance for your classes
                         </p>
                     </div>
 
                     <button
                         onClick={exportData}
-                        className="flex items-center gap-2 rounded-xl bg-red-800 px-6 py-3 text-lg font-bold text-white hover:bg-red-900"
+                        className="flex items-center justify-center gap-2 rounded-lg bg-[#970027] px-5 py-3 text-base font-semibold text-white transition hover:bg-[#790020]"
                     >
                         <Download size={20} />
                         Export Data
                     </button>
                 </div>
 
-                <div className="mb-8 rounded-2xl bg-white p-5 text-gray-900 shadow-lg">
-                    <div className="flex items-center gap-4">
+                <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                         <div className="relative flex-1">
                             <Search
-                                className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"
+                                className="absolute top-1/2 left-4 -translate-y-1/2 text-gray-500"
                                 size={22}
                             />
 
@@ -131,7 +132,7 @@ export default function Attendance() {
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                                 placeholder="Search by name, ID, or class..."
-                                className="w-full rounded-xl border px-12 py-4 text-lg text-gray-900 outline-none focus:border-red-800"
+                                className="w-full rounded-lg border border-gray-300 px-11 py-3 text-base text-gray-900 outline-none focus:border-[#970027]"
                             />
                         </div>
 
@@ -140,9 +141,11 @@ export default function Attendance() {
                         <select
                             value={status}
                             onChange={(e) =>
-                                setStatus(e.target.value as 'All Status' | Status)
+                                setStatus(
+                                    e.target.value as 'All Status' | Status,
+                                )
                             }
-                            className="rounded-xl border bg-white px-6 py-4 text-lg text-gray-900 outline-none focus:border-red-800"
+                            className="rounded-lg border border-gray-300 bg-white px-4 py-3 text-base text-gray-900 outline-none focus:border-[#970027]"
                         >
                             <option>All Status</option>
                             <option>Present</option>
@@ -152,18 +155,28 @@ export default function Attendance() {
                     </div>
                 </div>
 
-                <div className="mb-8 grid gap-6 md:grid-cols-4">
+                <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                     <StatCard title="Total Students" value={total} />
-                    <StatCard title="Present" value={present} color="text-green-600" />
-                    <StatCard title="Absent" value={absent} color="text-red-600" />
+                    <StatCard
+                        title="Present"
+                        value={present}
+                        color="text-green-600"
+                    />
+                    <StatCard
+                        title="Absent"
+                        value={absent}
+                        color="text-red-600"
+                    />
                     <StatCard title="Late" value={late} color="text-gray-700" />
                 </div>
 
-                <div className="overflow-hidden rounded-2xl bg-white text-gray-900 shadow-lg">
-                    <table className="w-full table-fixed text-left">
-                        <thead className="bg-gray-50 text-sm font-bold uppercase tracking-wide text-gray-600">
+                <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white text-gray-900 shadow-sm">
+                    <table className="w-full min-w-[760px] table-fixed text-left">
+                        <thead className="bg-gray-50 text-sm font-bold tracking-wide text-gray-600 uppercase">
                             <tr>
-                                <th className="w-[14%] px-8 py-5">Student ID</th>
+                                <th className="w-[14%] px-8 py-5">
+                                    Student ID
+                                </th>
                                 <th className="w-[18%] px-8 py-5">Name</th>
                                 <th className="w-[20%] px-8 py-5">Class</th>
                                 <th className="w-[16%] px-8 py-5">Time</th>
@@ -175,7 +188,10 @@ export default function Attendance() {
                         <tbody>
                             {filteredRecords.length > 0 ? (
                                 filteredRecords.map((record, index) => (
-                                    <tr key={`${record.studentId}-${index}`} className="border-t">
+                                    <tr
+                                        key={`${record.studentId}-${index}`}
+                                        className="border-t"
+                                    >
                                         <td className="px-8 py-6 font-bold text-gray-950">
                                             {record.studentId}
                                         </td>
@@ -190,7 +206,10 @@ export default function Attendance() {
 
                                         <td className="px-8 py-6 text-gray-800">
                                             <div className="flex items-center gap-2">
-                                                <Clock size={18} className="text-gray-500" />
+                                                <Clock
+                                                    size={18}
+                                                    className="text-gray-500"
+                                                />
                                                 {record.time || '--'}
                                             </div>
                                         </td>
@@ -200,7 +219,8 @@ export default function Attendance() {
                                                 className={`rounded-full px-4 py-2 text-sm font-bold ${
                                                     record.status === 'Present'
                                                         ? 'bg-green-100 text-green-700'
-                                                        : record.status === 'Absent'
+                                                        : record.status ===
+                                                            'Absent'
                                                           ? 'bg-red-100 text-red-700'
                                                           : 'bg-gray-100 text-gray-700'
                                                 }`}
@@ -211,11 +231,18 @@ export default function Attendance() {
 
                                         <td className="px-8 py-6 text-gray-800">
                                             <div className="flex items-start gap-2">
-                                                <MapPin size={18} className="mt-1 text-gray-500" />
+                                                <MapPin
+                                                    size={18}
+                                                    className="mt-1 text-gray-500"
+                                                />
                                                 <div>
-                                                    <p>{record.location || 'Not detected'}</p>
+                                                    <p>
+                                                        {record.location ||
+                                                            'Not detected'}
+                                                    </p>
                                                     <p className="text-sm text-gray-600">
-                                                        {record.coordinates || '--'}
+                                                        {record.coordinates ||
+                                                            '--'}
                                                     </p>
                                                 </div>
                                             </div>
@@ -224,7 +251,10 @@ export default function Attendance() {
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={6} className="px-8 py-16 text-center text-gray-500">
+                                    <td
+                                        colSpan={6}
+                                        className="px-8 py-16 text-center text-gray-500"
+                                    >
                                         No attendance records found.
                                     </td>
                                 </tr>
@@ -247,9 +277,9 @@ function StatCard({
     color?: string;
 }) {
     return (
-        <div className="rounded-2xl bg-white p-6 text-gray-900 shadow-lg">
-            <p className="text-lg text-gray-600">{title}</p>
-            <h2 className={`mt-2 text-4xl font-bold ${color}`}>{value}</h2>
+        <div className="rounded-xl border border-gray-200 bg-white p-5 text-gray-900 shadow-sm">
+            <p className="text-sm font-medium text-gray-600">{title}</p>
+            <h2 className={`mt-2 text-3xl font-bold ${color}`}>{value}</h2>
         </div>
     );
 }

@@ -18,8 +18,8 @@ export default defineConfig({
             },
         }),
         tailwindcss(),
-        wayfinder({
-            formVariants: true,
-        }),
+        ...(process.env.SKIP_WAYFINDER === '1'
+            ? []
+            : [wayfinder({ formVariants: true })]),
     ],
 });

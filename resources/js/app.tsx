@@ -2,8 +2,10 @@ import { createInertiaApp } from '@inertiajs/react';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { initializeTheme } from '@/hooks/use-appearance';
+import AdminLayout from '@/layouts/admin-layout';
 import AppLayout from '@/layouts/app-layout';
 import AuthLayout from '@/layouts/auth-layout';
+import InstructorLayout from '@/layouts/instructor-layout';
 import SettingsLayout from '@/layouts/settings/layout';
 import StudentLayout from '@/layouts/student-layout';
 
@@ -19,6 +21,12 @@ createInertiaApp({
                 return AuthLayout;
             case name.startsWith('settings/'):
                 return [AppLayout, SettingsLayout];
+            case name.startsWith('admin/'):
+                return AdminLayout;
+            case name.startsWith('instructor/'):
+                return InstructorLayout;
+            case name.startsWith('guard/'):
+                return null;
             case name.startsWith('student/'):
                 return StudentLayout;
             default:

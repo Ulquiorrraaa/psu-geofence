@@ -11,6 +11,7 @@ import {
     Users,
 } from 'lucide-react';
 
+import SchoolLogos from '@/components/school-logos';
 import { login, register } from '@/routes';
 
 interface AuthUser {
@@ -111,14 +112,9 @@ export default function Welcome({ canRegister = true }: WelcomeProps) {
                             {/* Logo */}
                             <Link
                                 href="/"
-                                className="mb-12 inline-flex items-center gap-4"
+                                className="mb-12 inline-flex flex-wrap items-center gap-4"
                             >
-                                <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#ffd600] text-[#970027] shadow-lg shadow-black/10">
-                                    <MapPin
-                                        className="h-8 w-8"
-                                        strokeWidth={2.5}
-                                    />
-                                </span>
+                                <SchoolLogos />
 
                                 <span>
                                     <span className="block text-xl leading-tight font-bold text-white">

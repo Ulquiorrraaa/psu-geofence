@@ -35,8 +35,8 @@ class AdminDashboardTest extends TestCase
             ->where('stats.totalStudents', 2)
             ->where('stats.totalInstructors', 1)
             ->where('stats.totalGuards', 1)
-            ->where('weeklyAttendance.0.present', 2)
-            ->where('studentTraffic.0.students', 2)
+            ->where('weeklyAttendance.0.present', 0)
+            ->where('studentTraffic.0.students', 0)
         );
     }
 

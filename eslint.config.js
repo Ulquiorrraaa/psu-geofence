@@ -119,6 +119,11 @@ export default [
             'resources/js/wayfinder/**',
         ],
     },
+    {
+        files: ['tests/js/**/*.cjs'],
+        languageOptions: { sourceType: 'commonjs', globals: globals.node },
+        rules: { '@typescript-eslint/no-require-imports': 'off' },
+    },
     prettier, // Turn off all rules that might conflict with Prettier
     {
         plugins: {

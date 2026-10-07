@@ -1,4 +1,5 @@
-import { Head, usePage } from '@inertiajs/react';
+import { Head, router, usePage } from '@inertiajs/react';
+import { Calendar, Download, FileText, TrendingUp, Users } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
@@ -14,14 +15,7 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
-
-import {
-    Calendar,
-    Download,
-    FileText,
-    TrendingUp,
-    Users,
-} from 'lucide-react';
+import { csvCell } from '@/lib/csv';
 
 type ReportType =
     | 'Attendance Summary'
@@ -29,11 +23,7 @@ type ReportType =
     | 'Absent Students'
     | 'Late Students';
 
-type DateRange =
-    | 'Today'
-    | 'This Week'
-    | 'This Month'
-    | 'This Semester';
+type DateRange = 'Today' | 'This Week' | 'This Month' | 'This Year';
 
 type ReportStats = {
     totalRecords: number;
@@ -57,9 +47,13 @@ type StatusDistribution = {
 type ClassRate = {
     className: string;
     rate: number;
+    present: number;
+    late: number;
+    absent: number;
 };
 
 type PageProps = {
+    filters: { reportType: ReportType; dateRange: DateRange };
     reportStats?: ReportStats;
     monthlyTrends?: MonthlyTrend[];
     statusDistribution?: StatusDistribution[];
@@ -68,6 +62,7 @@ type PageProps = {
 
 export default function Reports() {
     const {
+        filters,
         reportStats = {
             totalRecords: 0,
             averageAttendance: 0,
@@ -80,25 +75,41 @@ export default function Reports() {
         statusDistribution = [],
 
         classRates = [],
-    } = usePage().props as PageProps;
+    } = usePage<PageProps>().props;
 
-    const [reportType, setReportType] =
-        useState<ReportType>('Attendance Summary');
+    const [reportType, setReportType] = useState<ReportType>(
+        filters.reportType,
+    );
 
-    const [dateRange, setDateRange] =
-        useState<DateRange>('This Month');
+    const [dateRange, setDateRange] = useState<DateRange>(filters.dateRange);
 
+    const [generating, setGenerating] = useState(false);
     const reportRows = useMemo(() => {
         return classRates.map((item) => ({
-            reportType,
-            dateRange,
+            reportType: filters.reportType,
+            dateRange: filters.dateRange,
+            present: item.present,
+            late: item.late,
+            absent: item.absent,
             className: item.className,
             attendanceRate: `${item.rate}%`,
         }));
-    }, [classRates, reportType, dateRange]);
+    }, [classRates, filters]);
 
     function generateReport() {
-        alert(`${reportType} report generated for ${dateRange}.`);
+        if (generating) {
+            return;
+        }
+
+        setGenerating(true);
+        router.get(
+            '/admin/reports',
+            { reportType, dateRange },
+            {
+                preserveScroll: true,
+                onFinish: () => setGenerating(false),
+            },
+        );
     }
 
     function exportCSV() {
@@ -107,6 +118,9 @@ export default function Reports() {
             'Date Range',
             'Class Name',
             'Attendance Rate',
+            'Present',
+            'Late',
+            'Absent',
         ];
 
         const rows = reportRows.map((row) => [
@@ -114,13 +128,14 @@ export default function Reports() {
             row.dateRange,
             row.className,
             row.attendanceRate,
+            String(row.present),
+            String(row.late),
+            String(row.absent),
         ]);
 
         const csv = [
             headers.join(','),
-            ...rows.map((row) =>
-                row.map((item) => `"${item}"`).join(',')
-            ),
+            ...rows.map((row) => row.map(csvCell).join(',')),
         ].join('\n');
 
         const blob = new Blob([csv], {
@@ -146,28 +161,25 @@ export default function Reports() {
         <>
             <Head title="Reports" />
 
-            <div className="min-h-screen bg-gray-50 p-6 text-gray-900">
-
+            <div className="min-h-full bg-[#f7f8fa] p-5 text-gray-900 sm:p-7">
                 {/* HEADER */}
                 <div className="mb-8">
-                    <h1 className="text-3xl font-bold text-gray-950">
+                    <h1 className="text-3xl font-bold tracking-tight text-[#8f001f]">
                         Reports
                     </h1>
 
-                    <p className="text-lg text-gray-700">
+                    <p className="mt-1 text-base text-gray-600">
                         Generate and download attendance reports
                     </p>
                 </div>
 
                 {/* GENERATE REPORT */}
-                <div className="mb-8 rounded-xl border bg-white p-8 shadow-sm">
-
-                    <h2 className="mb-6 text-2xl font-bold text-gray-950">
+                <div className="mb-7 rounded-xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
+                    <h2 className="mb-5 text-xl font-bold text-gray-950">
                         Generate Report
                     </h2>
 
                     <div className="grid gap-5 lg:grid-cols-3">
-
                         <div>
                             <label className="mb-2 block font-semibold text-gray-800">
                                 Report Type
@@ -176,11 +188,9 @@ export default function Reports() {
                             <select
                                 value={reportType}
                                 onChange={(e) =>
-                                    setReportType(
-                                        e.target.value as ReportType
-                                    )
+                                    setReportType(e.target.value as ReportType)
                                 }
-                                className="w-full rounded-xl border bg-white px-5 py-4 text-lg text-gray-900 outline-none focus:border-red-800"
+                                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-base text-gray-900 outline-none focus:border-[#970027]"
                             >
                                 <option>Attendance Summary</option>
                                 <option>Class Report</option>
@@ -197,23 +207,22 @@ export default function Reports() {
                             <select
                                 value={dateRange}
                                 onChange={(e) =>
-                                    setDateRange(
-                                        e.target.value as DateRange
-                                    )
+                                    setDateRange(e.target.value as DateRange)
                                 }
-                                className="w-full rounded-xl border bg-white px-5 py-4 text-lg text-gray-900 outline-none focus:border-red-800"
+                                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-base text-gray-900 outline-none focus:border-[#970027]"
                             >
                                 <option>Today</option>
                                 <option>This Week</option>
                                 <option>This Month</option>
-                                <option>This Semester</option>
+                                <option>This Year</option>
                             </select>
                         </div>
 
                         <div className="flex items-end">
                             <button
+                                disabled={generating}
                                 onClick={generateReport}
-                                className="w-full rounded-xl bg-red-600 px-6 py-4 text-lg font-bold text-white hover:bg-red-700"
+                                className="w-full rounded-lg bg-[#970027] px-5 py-3 text-base font-semibold text-white transition hover:bg-[#790020]"
                             >
                                 Generate Report
                             </button>
@@ -221,10 +230,9 @@ export default function Reports() {
                     </div>
 
                     <div className="mt-6 flex flex-wrap gap-4">
-
                         <button
                             onClick={exportPDF}
-                            className="flex items-center gap-2 rounded-xl border bg-white px-6 py-3 text-lg font-semibold text-gray-800 hover:bg-gray-100"
+                            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-5 py-3 text-base font-semibold text-gray-800 transition hover:bg-gray-50"
                         >
                             <Download size={20} />
                             Export as PDF
@@ -232,7 +240,7 @@ export default function Reports() {
 
                         <button
                             onClick={exportCSV}
-                            className="flex items-center gap-2 rounded-xl border bg-white px-6 py-3 text-lg font-semibold text-gray-800 hover:bg-gray-100"
+                            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-5 py-3 text-base font-semibold text-gray-800 transition hover:bg-gray-50"
                         >
                             <Download size={20} />
                             Export as CSV
@@ -241,8 +249,7 @@ export default function Reports() {
                 </div>
 
                 {/* STATS */}
-                <div className="mb-8 grid gap-6 md:grid-cols-4">
-
+                <div className="mb-8 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
                     <StatCard
                         title="Total Records"
                         value={reportStats.totalRecords.toString()}
@@ -268,7 +275,7 @@ export default function Reports() {
                     />
 
                     <StatCard
-                        title="Reports Generated"
+                        title="Recorded Students"
                         value={reportStats.reportsGenerated.toString()}
                         icon={<FileText />}
                         bg="bg-orange-100"
@@ -278,25 +285,16 @@ export default function Reports() {
 
                 {/* CHARTS */}
                 <div className="mb-8 grid gap-6 lg:grid-cols-2">
-
                     {/* BAR CHART */}
                     <div className="rounded-xl border bg-white p-8 shadow-sm">
-
                         <h2 className="mb-8 text-2xl font-bold text-gray-950">
                             Monthly Attendance Trends
                         </h2>
 
                         <div className="h-[400px] w-full">
-
-                            <ResponsiveContainer
-                                width="100%"
-                                height="100%"
-                            >
+                            <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={monthlyTrends}>
-
-                                    <CartesianGrid
-                                        strokeDasharray="3 3"
-                                    />
+                                    <CartesianGrid strokeDasharray="3 3" />
 
                                     <XAxis dataKey="month" />
 
@@ -326,72 +324,65 @@ export default function Reports() {
                         </div>
 
                         <div className="mt-5 flex flex-wrap gap-5 text-sm font-semibold">
-                            <span className="text-emerald-600">
-                                Present
-                            </span>
+                            <span className="text-emerald-600">Present</span>
 
-                            <span className="text-yellow-600">
-                                Late
-                            </span>
+                            <span className="text-yellow-600">Late</span>
 
-                            <span className="text-red-600">
-                                Absent
-                            </span>
+                            <span className="text-red-600">Absent</span>
                         </div>
                     </div>
 
                     {/* PIE CHART */}
-                    <div className="min-w-0 rounded-xl border bg-white p-8 shadow-sm">
-
+                    <div className="min-w-0 rounded-xl border bg-white p-4 shadow-sm sm:p-6">
                         <h2 className="mb-8 text-2xl font-bold text-gray-950">
                             Attendance Status Distribution
                         </h2>
 
                         {statusDistribution.length > 0 ? (
-
-                            <div className="flex min-h-[400px] flex-col items-center justify-center gap-10 lg:flex-row">
-
+                            <div className="flex min-h-[320px] flex-col items-center justify-center gap-6 2xl:flex-row">
                                 {/* CHART */}
-                                <div className="flex items-center justify-center">
-
-                                    <div className="h-[350px] w-[350px]">
-
-                                        <ResponsiveContainer width="100%" height="100%">
+                                <div className="flex w-full min-w-0 items-center justify-center 2xl:flex-1">
+                                    <div className="aspect-square w-full max-w-[350px]">
+                                        <ResponsiveContainer
+                                            width="100%"
+                                            height="100%"
+                                        >
                                             <PieChart>
-
                                                 <Pie
                                                     data={statusDistribution}
                                                     dataKey="value"
                                                     nameKey="name"
                                                     cx="50%"
                                                     cy="50%"
-                                                    outerRadius={130}
+                                                    outerRadius="75%"
                                                     paddingAngle={2}
                                                 >
-                                                    {statusDistribution.map((item) => (
-                                                        <Cell
-                                                            key={item.name}
-                                                            fill={
-                                                                item.name === 'Present'
-                                                                    ? '#10b981'
-                                                                    : item.name === 'Late'
-                                                                      ? '#eab308'
-                                                                      : '#ef4444'
-                                                            }
-                                                        />
-                                                    ))}
+                                                    {statusDistribution.map(
+                                                        (item) => (
+                                                            <Cell
+                                                                key={item.name}
+                                                                fill={
+                                                                    item.name ===
+                                                                    'Present'
+                                                                        ? '#10b981'
+                                                                        : item.name ===
+                                                                            'Late'
+                                                                          ? '#eab308'
+                                                                          : '#ef4444'
+                                                                }
+                                                            />
+                                                        ),
+                                                    )}
                                                 </Pie>
 
                                                 <Tooltip />
-
                                             </PieChart>
                                         </ResponsiveContainer>
                                     </div>
                                 </div>
 
                                 {/* LEGEND */}
-                                <div className="space-y-6 text-2xl font-bold">
-
+                                <div className="space-y-4 text-base font-bold sm:text-lg">
                                     {statusDistribution.map((item) => (
                                         <p
                                             key={item.name}
@@ -408,7 +399,6 @@ export default function Reports() {
                                     ))}
                                 </div>
                             </div>
-
                         ) : (
                             <div className="flex h-96 items-center justify-center text-gray-500">
                                 No attendance distribution data yet.
@@ -419,7 +409,6 @@ export default function Reports() {
 
                 {/* TABLE */}
                 <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
-
                     <div className="border-b p-8">
                         <h2 className="text-2xl font-bold text-gray-950">
                             Class Attendance Rates
@@ -427,28 +416,20 @@ export default function Reports() {
                     </div>
 
                     <div className="overflow-x-auto">
-
                         <table className="w-full text-left">
-
-                            <thead className="bg-gray-50 text-sm font-bold uppercase tracking-wide text-gray-600">
-
+                            <thead className="bg-gray-50 text-sm font-bold tracking-wide text-gray-600 uppercase">
                                 <tr>
-                                    <th className="px-8 py-5">
-                                        Class Name
-                                    </th>
+                                    <th className="px-8 py-5">Class Name</th>
 
                                     <th className="px-8 py-5">
                                         Attendance Rate
                                     </th>
 
-                                    <th className="px-8 py-5">
-                                        Progress
-                                    </th>
+                                    <th className="px-8 py-5">Progress</th>
                                 </tr>
                             </thead>
 
                             <tbody>
-
                                 {classRates.length > 0 ? (
                                     classRates.map((item) => (
                                         <tr
@@ -464,9 +445,7 @@ export default function Reports() {
                                             </td>
 
                                             <td className="px-8 py-5">
-
                                                 <div className="h-3 w-full rounded-full bg-gray-200">
-
                                                     <div
                                                         className={`h-3 rounded-full ${
                                                             item.rate >= 90
@@ -515,19 +494,12 @@ function StatCard({
 }) {
     return (
         <div className="flex min-h-[145px] items-center gap-5 rounded-xl border bg-white p-7 shadow-sm">
-
-            <div className={`rounded-xl p-4 ${bg} ${color}`}>
-                {icon}
-            </div>
+            <div className={`rounded-xl p-4 ${bg} ${color}`}>{icon}</div>
 
             <div>
-                <p className="text-lg text-gray-700">
-                    {title}
-                </p>
+                <p className="text-lg text-gray-700">{title}</p>
 
-                <h2 className="text-3xl font-bold text-gray-950">
-                    {value}
-                </h2>
+                <h2 className="text-3xl font-bold text-gray-950">{value}</h2>
             </div>
         </div>
     );

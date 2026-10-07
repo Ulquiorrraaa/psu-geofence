@@ -4,87 +4,143 @@ import {
     ClipboardList,
     Home,
     LogOut,
-    MapPin,
     UserRound,
 } from 'lucide-react';
+import ProfileAvatar from '@/components/profile-avatar';
+import {
+    Sidebar,
+    SidebarContent,
+    SidebarFooter,
+    SidebarHeader,
+    SidebarMenu,
+    SidebarMenuButton,
+    SidebarMenuItem,
+} from '@/components/ui/sidebar';
 
 const items = [
+    { label: 'Profile', href: '/student/profile', icon: UserRound },
     { label: 'Home', href: '/student/dashboard', icon: Home },
     { label: 'Schedule', href: '/student/schedules', icon: CalendarDays },
     { label: 'Attendance', href: '/student/attendance', icon: ClipboardList },
-    { label: 'Profile', href: '/student/profile', icon: UserRound },
+    {
+        label: 'Register Class',
+        href: '/student/register-class',
+        icon: ClipboardList,
+    },
+    {
+        label: 'Student Registration',
+        href: '/student/registration',
+        icon: UserRound,
+    },
 ];
 
 export default function StudentSidebar() {
     const { url, props } = usePage();
-    const auth = props.auth as { user?: { name?: string } } | undefined;
+    const auth = props.auth as
+        | { user?: { name?: string; profile_picture_url?: string | null } }
+        | undefined;
     const pathname = url.split('?')[0];
 
     return (
         <>
-            <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col bg-[#850027] text-white md:flex">
-                <Link
-                    href="/student/dashboard"
-                    className="flex items-center gap-3 border-b border-white/15 px-6 py-7"
-                >
-                    <span className="flex size-11 items-center justify-center rounded-full bg-[#ffd600] text-[#850027]">
-                        <MapPin size={23} />
-                    </span>
-                    <span>
-                        <span className="block font-bold">PSU Attendance</span>
-                        <span className="mt-1 block text-xs font-semibold tracking-wider text-pink-200 uppercase">
-                            Student Portal
+            <Sidebar collapsible="icon" className="bg-[#850027] text-white">
+                <SidebarHeader className="border-b border-white/15 bg-[#850027] px-6 py-7 group-data-[collapsible=icon]:px-2">
+                    <Link
+                        href="/student/dashboard"
+                        className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center"
+                    >
+                        <img
+                            src="/images/psu-lubao-logo.png"
+                            alt="Pampanga State University Lubao Campus"
+                            width={48}
+                            height={48}
+                            className="size-11 shrink-0 rounded-full object-contain group-data-[collapsible=icon]:size-8"
+                        />
+                        <span className="group-data-[collapsible=icon]:hidden">
+                            <span className="block font-bold">
+                                PSU Attendance
+                            </span>
+                            <span className="mt-1 block text-xs font-semibold tracking-wider text-pink-200 uppercase">
+                                Student Portal
+                            </span>
                         </span>
-                    </span>
-                </Link>
+                    </Link>
+                </SidebarHeader>
 
-                <nav
-                    aria-label="Student navigation"
-                    className="flex-1 space-y-2 px-4 py-7"
-                >
-                    {items.map(({ label, href, icon: Icon }) => {
-                        const active = pathname === href;
+                <SidebarContent className="bg-[#850027] px-4 py-7 group-data-[collapsible=icon]:px-2">
+                    <SidebarMenu className="gap-2">
+                        {items.map(({ label, href, icon: Icon }) => {
+                            const active =
+                                pathname === href ||
+                                (href === '/student/profile' &&
+                                    pathname.startsWith(`${href}/`));
 
-                        return (
-                            <Link
-                                key={href}
-                                href={href}
-                                aria-current={active ? 'page' : undefined}
-                                className={`flex min-h-12 items-center gap-3 rounded-lg px-4 font-semibold transition-colors ${
-                                    active
-                                        ? 'bg-white text-[#850027]'
-                                        : 'text-pink-100 hover:bg-white/10 hover:text-white'
-                                }`}
-                            >
-                                <Icon size={20} strokeWidth={1.9} />
-                                {label}
-                            </Link>
-                        );
-                    })}
-                </nav>
+                            return (
+                                <SidebarMenuItem key={href}>
+                                    <SidebarMenuButton
+                                        asChild
+                                        isActive={active}
+                                        tooltip={{ children: label }}
+                                        className={`h-12 rounded-lg px-4 font-semibold group-data-[collapsible=icon]:justify-center ${
+                                            active
+                                                ? '!bg-white !text-[#850027] hover:!bg-white'
+                                                : '!text-pink-100 hover:!bg-white/10 hover:!text-white'
+                                        }`}
+                                    >
+                                        <Link
+                                            href={href}
+                                            aria-current={
+                                                active ? 'page' : undefined
+                                            }
+                                        >
+                                            <Icon size={20} strokeWidth={1.9} />
+                                            <span className="group-data-[collapsible=icon]:hidden">
+                                                {label}
+                                            </span>
+                                        </Link>
+                                    </SidebarMenuButton>
+                                </SidebarMenuItem>
+                            );
+                        })}
+                    </SidebarMenu>
+                </SidebarContent>
 
-                <div className="border-t border-white/15 px-6 py-5">
-                    <p className="truncate text-sm font-semibold">
+                <SidebarFooter className="border-t border-white/15 bg-[#850027] px-6 py-5 group-data-[collapsible=icon]:px-2">
+                    <ProfileAvatar
+                        name={auth?.user?.name}
+                        url={auth?.user?.profile_picture_url}
+                    />
+                    <p className="truncate text-sm font-semibold group-data-[collapsible=icon]:hidden">
                         {auth?.user?.name ?? 'Student'}
                     </p>
-                    <Link
-                        href="/logout"
-                        method="post"
-                        as="button"
-                        className="mt-4 flex items-center gap-3 text-sm font-semibold text-pink-200 hover:text-white"
-                    >
-                        <LogOut size={18} />
-                        Sign out
-                    </Link>
-                </div>
-            </aside>
+                    <SidebarMenu>
+                        <SidebarMenuItem>
+                            <SidebarMenuButton
+                                asChild
+                                tooltip="Sign out"
+                                className="mt-2 font-semibold !text-pink-200 group-data-[collapsible=icon]:justify-center hover:!bg-white/10 hover:!text-white"
+                            >
+                                <Link href="/logout" method="post" as="button">
+                                    <LogOut size={18} />
+                                    <span className="group-data-[collapsible=icon]:hidden">
+                                        Sign out
+                                    </span>
+                                </Link>
+                            </SidebarMenuButton>
+                        </SidebarMenuItem>
+                    </SidebarMenu>
+                </SidebarFooter>
+            </Sidebar>
 
             <nav
                 aria-label="Student navigation"
-                className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-gray-200 bg-white px-2 pt-2 pb-[env(safe-area-inset-bottom)] md:hidden"
+                className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-gray-200 bg-white px-2 pt-2 pb-[env(safe-area-inset-bottom)] md:hidden"
             >
                 {items.map(({ label, href, icon: Icon }) => {
-                    const active = pathname === href;
+                    const active =
+                        pathname === href ||
+                        (href === '/student/profile' &&
+                            pathname.startsWith(`${href}/`));
 
                     return (
                         <Link

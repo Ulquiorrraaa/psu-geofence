@@ -11,6 +11,7 @@ class DashboardResponse implements LoginResponse, RegisterResponse
     {
         return match (strtolower(trim((string) $request->user()->role))) {
             'admin' => redirect()->route('admin.dashboard'),
+            'guard' => redirect()->route('guard.dashboard'),
             'student' => redirect()->route('student.dashboard'),
             default => redirect()->route('dashboard'),
         };

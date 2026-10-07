@@ -16,11 +16,16 @@ class AdminMiddleware
             return redirect()->route('login');
         }
 
+        abort_if($user->status === 'Inactive', 403, 'This account is inactive.');
+        if ($request->expectsJson()) {
+            abort_unless($user->role === 'admin', 403);
+        }
         $role = strtolower(trim((string) $user->role));
 
         if ($role !== 'admin') {
 
             return match ($role) {
+                'guard' => redirect()->route('guard.dashboard'),
                 'instructor' => redirect()->route('dashboard'),
                 'student' => redirect()->route('student.dashboard'),
                 default => redirect()->route('home'),

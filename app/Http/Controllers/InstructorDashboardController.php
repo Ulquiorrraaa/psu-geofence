@@ -5,206 +5,852 @@ namespace App\Http\Controllers;
 use App\Models\Attendance;
 use App\Models\Schedule;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class InstructorDashboardController extends Controller
 {
+    /*
+    |--------------------------------------------------------------------------
+    | Dashboard
+    |--------------------------------------------------------------------------
+    */
+
     public function index(Request $request): Response
     {
-        $user = $request->user();
-        $today = now()->format('l');
+        $instructor = $request->user();
+
+        $now = now('Asia/Manila');
+
+        $today = $now->toDateString();
+
+        $todayName = $now->format('D');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Instructor schedules
+        |--------------------------------------------------------------------------
+        */
 
         $schedules = Schedule::query()
-            ->where('user_id', $user->id)
-            ->withCount([
-                'attendances as present_count' => fn ($query) =>
-                    $query->where('status', 'Present'),
-
-                'attendances as late_count' => fn ($query) =>
-                    $query->where('status', 'Late'),
-
-                'attendances as absent_count' => fn ($query) =>
-                    $query->where('status', 'Absent'),
+            ->where(function ($query) use ($instructor) {
+                $query
+                    ->where(
+                        'user_id',
+                        $instructor->id
+                    )
+                    ->orWhere(
+                        'instructor_id',
+                        $instructor->id
+                    );
+            })
+            ->with([
+                'registeredStudents',
             ])
             ->orderBy('start_time')
             ->get();
 
-        $todaySchedules = $schedules
-            ->filter(function (Schedule $schedule) use ($today): bool {
-                return in_array(
-                    $today,
-                    $this->getScheduleDays($schedule->days),
-                    true
-                );
+        /*
+        |--------------------------------------------------------------------------
+        | Class attendance statistics
+        |--------------------------------------------------------------------------
+        */
+
+        $classAttendance = $schedules
+            ->map(function (Schedule $schedule) use ($today): array {
+                $students = $this
+                    ->getStudentsForSchedule(
+                        $schedule
+                    );
+
+                $studentIds = $students
+                    ->pluck('id');
+
+                $attendances = Attendance::query()
+                    ->where(
+                        'schedule_id',
+                        $schedule->id
+                    )
+                    ->whereIn(
+                        'student_id',
+                        $studentIds
+                    )
+                    ->where(function ($query) use ($today) {
+                        $query
+                            ->whereDate(
+                                'attendance_date',
+                                $today
+                            )
+                            ->orWhere(function ($query) use ($today) {
+                                $query
+                                    ->whereNull(
+                                        'attendance_date'
+                                    )
+                                    ->whereDate(
+                                        'created_at',
+                                        $today
+                                    );
+                            });
+                    })
+                    ->orderByDesc('time_in')
+                    ->orderByDesc('created_at')
+                    ->get()
+                    ->unique('student_id');
+
+                $present = $attendances
+                    ->filter(
+                        fn ($attendance): bool => strtolower(
+                            trim(
+                                (string) $attendance->status
+                            )
+                        ) === 'present'
+                    )
+                    ->count();
+
+                $late = $attendances
+                    ->filter(
+                        fn ($attendance): bool => strtolower(
+                            trim(
+                                (string) $attendance->status
+                            )
+                        ) === 'late'
+                    )
+                    ->count();
+
+                $absentRecords = $attendances
+                    ->filter(
+                        fn ($attendance): bool => strtolower(
+                            trim(
+                                (string) $attendance->status
+                            )
+                        ) === 'absent'
+                    )
+                    ->count();
+
+                $recordedStudentIds = $attendances
+                    ->pluck('student_id')
+                    ->unique();
+
+                $notRecorded = $studentIds
+                    ->diff(
+                        $recordedStudentIds
+                    )
+                    ->count();
+
+                return [
+                    'id' => $schedule->id,
+
+                    'className' => $schedule->subject,
+
+                    'present' => $present + $late,
+
+                    'absent' => $absentRecords +
+                        $notRecorded,
+
+                    'studentCount' => $students->count(),
+                ];
             })
             ->values();
 
-        $totalStudents = (int) $schedules->sum('students');
-        $totalPresent = (int) $schedules->sum('present_count');
-        $totalLate = (int) $schedules->sum('late_count');
+        /*
+        |--------------------------------------------------------------------------
+        | Dashboard totals
+        |--------------------------------------------------------------------------
+        */
 
-        $averageAttendance = $totalStudents > 0
-            ? round(
-                (($totalPresent + $totalLate) / $totalStudents) * 100,
-                1
+        $totalStudents = (int)
+            $classAttendance->sum(
+                'studentCount'
+            );
+
+        $totalPresent = (int)
+            $classAttendance->sum(
+                'present'
+            );
+
+        $totalPossible = (int)
+            $classAttendance->sum(
+                function (array $class): int {
+                    return
+                        (int) $class['present'] +
+                        (int) $class['absent'];
+                }
+            );
+
+        $averageAttendance =
+            $totalPossible > 0
+                ? round(
+                    (
+                        $totalPresent /
+                        $totalPossible
+                    ) * 100,
+                    1
+                )
+                : 0;
+
+        /*
+        |--------------------------------------------------------------------------
+        | Today's classes
+        |--------------------------------------------------------------------------
+        */
+
+        $todaySchedules = $schedules
+            ->filter(
+                function (
+                    Schedule $schedule
+                ) use ($todayName): bool {
+                    return in_array(
+                        $todayName,
+                        $this->normalizeDays(
+                            $schedule->days
+                        ),
+                        true
+                    );
+                }
             )
-            : 0;
-
-        $classAttendance = $schedules
-            ->map(fn (Schedule $schedule): array => [
-                'className' => $schedule->subject,
-                'present' => (int) $schedule->present_count,
-                'absent' => (int) $schedule->absent_count,
-            ])
             ->values();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Today's class cards
+        |--------------------------------------------------------------------------
+        */
 
         $todayClasses = $todaySchedules
-            ->map(fn (Schedule $schedule): array => [
-                'id' => $schedule->id,
-                'className' => $schedule->subject,
-                'section' => $schedule->section,
-                'startTime' => $schedule->start_time,
-                'endTime' => $schedule->end_time,
-                'location' => $schedule->location,
-                'studentCount' => (int) $schedule->students,
-                'presentCount' => (int) $schedule->present_count,
-                'status' => $this->getDisplayStatus($schedule),
-            ])
+            ->map(function (Schedule $schedule) use ($today): array {
+                $students = $this
+                    ->getStudentsForSchedule(
+                        $schedule
+                    );
+
+                $studentIds = $students
+                    ->pluck('id');
+
+                $attendances = Attendance::query()
+                    ->where(
+                        'schedule_id',
+                        $schedule->id
+                    )
+                    ->whereIn(
+                        'student_id',
+                        $studentIds
+                    )
+                    ->where(function ($query) use ($today) {
+                        $query
+                            ->whereDate(
+                                'attendance_date',
+                                $today
+                            )
+                            ->orWhere(function ($query) use ($today) {
+                                $query
+                                    ->whereNull(
+                                        'attendance_date'
+                                    )
+                                    ->whereDate(
+                                        'created_at',
+                                        $today
+                                    );
+                            });
+                    })
+                    ->orderByDesc('time_in')
+                    ->orderByDesc('created_at')
+                    ->get()
+                    ->unique('student_id');
+
+                $present = $attendances
+                    ->filter(
+                        fn ($attendance): bool => strtolower(
+                            trim(
+                                (string) $attendance->status
+                            )
+                        ) === 'present'
+                    )
+                    ->count();
+
+                $late = $attendances
+                    ->filter(
+                        fn ($attendance): bool => strtolower(
+                            trim(
+                                (string) $attendance->status
+                            )
+                        ) === 'late'
+                    )
+                    ->count();
+
+                return [
+                    'id' => $schedule->id,
+
+                    'className' => $schedule->subject,
+
+                    'section' => $schedule->section
+                            ?: 'No section',
+
+                    'startTime' => $this->formatTime(
+                        $schedule->start_time
+                    ),
+
+                    'endTime' => $this->formatTime(
+                        $schedule->end_time
+                    ),
+
+                    'location' => $schedule->location
+                            ?: 'No location',
+
+                    'studentCount' => $students->count(),
+
+                    'presentCount' => $present + $late,
+
+                    'status' => $this->getDisplayStatus(
+                        $schedule
+                    ),
+
+                    'registrationUrl' => $schedule->registration_token
+                            ? route(
+                                'student.class-registration.show',
+                                [
+                                    'token' => $schedule
+                                        ->registration_token,
+                                ]
+                            )
+                            : null,
+                ];
+            })
             ->values();
 
-        return Inertia::render('instructor/Dashboard', [
-            'instructorStats' => [
-                'myClasses' => $schedules->count(),
-                'totalStudents' => $totalStudents,
-                'averageAttendance' => $averageAttendance,
-                'attendanceChange' => 0,
-                'classesToday' => $todaySchedules->count(),
-            ],
-            'classAttendance' => $classAttendance,
-            'todayClasses' => $todayClasses,
-        ]);
+        /*
+        |--------------------------------------------------------------------------
+        | Return instructor dashboard
+        |--------------------------------------------------------------------------
+        */
+
+        return Inertia::render(
+            'instructor/Dashboard',
+            [
+                'instructorStats' => [
+                    'myClasses' => $schedules->count(),
+
+                    'totalStudents' => $totalStudents,
+
+                    'averageAttendance' => $averageAttendance,
+
+                    'classesToday' => $todaySchedules->count(),
+                ],
+
+                'classAttendance' => $classAttendance,
+
+                'todayClasses' => $todayClasses,
+            ]
+        );
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Class Details
+    |--------------------------------------------------------------------------
+    */
 
     public function show(
         Request $request,
         Schedule $schedule
     ): Response {
+        /*
+        |--------------------------------------------------------------------------
+        | Security / ownership
+        |--------------------------------------------------------------------------
+        */
+
+        $instructorId =
+            (int) $request->user()->id;
+
+        $ownsSchedule =
+            (int) $schedule->user_id === $instructorId ||
+            (int) $schedule->instructor_id === $instructorId;
+
         abort_unless(
-            (int) $schedule->user_id ===
-                (int) $request->user()->id,
+            $ownsSchedule,
             403,
             'You are not allowed to view this class.'
         );
 
-        $students = $schedule->section
-            ? User::query()
-                ->where('role', 'student')
-                ->where('section', $schedule->section)
-                ->orderBy('name')
-                ->get()
-            : collect();
+        /*
+        |--------------------------------------------------------------------------
+        | Registered students only
+        |--------------------------------------------------------------------------
+        */
 
-        $attendanceRecords = Attendance::query()
-            ->where('schedule_id', $schedule->id)
-            ->get()
-            ->keyBy('student_id');
+        $students = $this
+            ->getStudentsForSchedule(
+                $schedule
+            );
+
+        $studentIds = $students
+            ->pluck('id');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Today's date
+        |--------------------------------------------------------------------------
+        */
+
+        $today = now(
+            'Asia/Manila'
+        )->toDateString();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Today's attendance only
+        |--------------------------------------------------------------------------
+        */
+
+        $attendanceRecords =
+            Attendance::query()
+                ->where(
+                    'schedule_id',
+                    $schedule->id
+                )
+                ->whereIn(
+                    'student_id',
+                    $studentIds
+                )
+                ->where(function ($query) use ($today) {
+                    $query
+                        ->whereDate(
+                            'attendance_date',
+                            $today
+                        )
+                        ->orWhere(function ($query) use ($today) {
+                            $query
+                                ->whereNull(
+                                    'attendance_date'
+                                )
+                                ->whereDate(
+                                    'created_at',
+                                    $today
+                                );
+                        });
+                })
+                ->orderByDesc('time_in')
+                ->orderByDesc('created_at')
+                ->get()
+                ->unique('student_id')
+                ->keyBy('student_id');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Build student roster
+        |--------------------------------------------------------------------------
+        */
 
         $studentRoster = $students
-            ->map(function (User $student) use (
-                $attendanceRecords
-            ): array {
-                $attendance = $attendanceRecords->get(
-                    $student->id
-                );
+            ->map(
+                function (
+                    User $student
+                ) use (
+                    $attendanceRecords
+                ): array {
+                    $attendance =
+                        $attendanceRecords
+                            ->get(
+                                $student->id
+                            );
 
-                return [
-                    'id' => $student->id,
-                    'name' => $student->name,
-                    'studentNumber' => 'STU-'.str_pad(
-                        (string) $student->id,
-                        4,
-                        '0',
-                        STR_PAD_LEFT
-                    ),
-                    'status' => $attendance?->status
-                        ?? 'Absent',
-                    'timeIn' => $attendance?->time_in
-                        ? $attendance->time_in->format('h:i A')
-                        : null,
-                ];
-            })
+                    $status = $attendance
+                        ? strtolower(
+                            trim(
+                                (string)
+                                $attendance->status
+                            )
+                        )
+                        : 'absent';
+
+                    if (
+                        ! in_array(
+                            $status,
+                            [
+                                'present',
+                                'late',
+                                'absent',
+                            ],
+                            true
+                        )
+                    ) {
+                        $status = 'absent';
+                    }
+
+                    return [
+                        'id' => $student->id,
+
+                        'name' => $student->name,
+
+                        'studentNumber' => $student->pivot?->student_number
+                            ?: $student->student_id
+                            ?: 'Not assigned',
+
+                        'course' => $student->course,
+
+                        'year' => $student->pivot?->year_level
+                            ?: $student->year,
+
+                        'section' => $student->pivot?->section
+                            ?: $student->section,
+
+                        'email' => $student->email,
+
+                        'registeredAt' => $student->pivot?->registered_at
+                                ? Carbon::parse(
+                                    $student
+                                        ->pivot
+                                        ->registered_at
+                                )
+                                    ->timezone(
+                                        'Asia/Manila'
+                                    )
+                                    ->format(
+                                        'M d, Y h:i A'
+                                    )
+                                : null,
+
+                        'registrationStatus' => $student->pivot?->status
+                            ?: 'active',
+
+                        'status' => ucfirst(
+                            $status
+                        ),
+
+                        'timeIn' => $attendance?->time_in
+                            ?->timezone(
+                                'Asia/Manila'
+                            )
+                            ->format(
+                                'h:i A'
+                            ),
+                    ];
+                }
+            )
             ->values();
 
-        return Inertia::render('instructor/ClassDetails', [
-            'classDetails' => [
-                'id' => $schedule->id,
-                'subject' => $schedule->subject,
-                'section' => $schedule->section,
-                'startTime' => $schedule->start_time,
-                'endTime' => $schedule->end_time,
-                'location' => $schedule->location,
-                'status' => $this->getDisplayStatus(
-                    $schedule
-                ),
-            ],
-            'students' => $studentRoster,
-            'statistics' => [
-                'total' => $studentRoster->count(),
-                'present' => $studentRoster
-                    ->where('status', 'Present')
-                    ->count(),
-                'late' => $studentRoster
-                    ->where('status', 'Late')
-                    ->count(),
-                'absent' => $studentRoster
-                    ->where('status', 'Absent')
-                    ->count(),
-            ],
-        ]);
-    }
+        /*
+        |--------------------------------------------------------------------------
+        | Statistics
+        |--------------------------------------------------------------------------
+        */
 
-    private function getScheduleDays(
-        array|string|null $days
-    ): array {
-        if (is_array($days)) {
-            return $days;
-        }
+        $total =
+            $studentRoster->count();
 
-        if (! is_string($days) || $days === '') {
-            return [];
-        }
+        $present =
+            $studentRoster
+                ->filter(
+                    fn (
+                        array $student
+                    ): bool => strtolower(
+                        (string)
+                        $student['status']
+                    ) === 'present'
+                )
+                ->count();
 
-        $decoded = json_decode($days, true);
+        $late =
+            $studentRoster
+                ->filter(
+                    fn (
+                        array $student
+                    ): bool => strtolower(
+                        (string)
+                        $student['status']
+                    ) === 'late'
+                )
+                ->count();
 
-        if (is_array($decoded)) {
-            return $decoded;
-        }
+        $absent =
+            $studentRoster
+                ->filter(
+                    fn (
+                        array $student
+                    ): bool => strtolower(
+                        (string)
+                        $student['status']
+                    ) === 'absent'
+                )
+                ->count();
 
-        return array_values(
-            array_filter(
-                array_map('trim', explode(',', $days))
-            )
+        /*
+        |--------------------------------------------------------------------------
+        | Class Details Page
+        |--------------------------------------------------------------------------
+        */
+
+        return Inertia::render(
+            'instructor/ClassDetails',
+            [
+                'classDetails' => [
+                    'id' => $schedule->id,
+
+                    'subject' => $schedule->subject,
+
+                    'section' => $schedule->section,
+
+                    'startTime' => $this->formatTime(
+                        $schedule->start_time
+                    ),
+
+                    'endTime' => $this->formatTime(
+                        $schedule->end_time
+                    ),
+
+                    'location' => $schedule->location,
+
+                    'status' => $this->getDisplayStatus(
+                        $schedule
+                    ),
+
+                    'registrationUrl' => $schedule->registration_token
+                            ? route(
+                                'student.class-registration.show',
+                                [
+                                    'token' => $schedule
+                                        ->registration_token,
+                                ]
+                            )
+                            : null,
+                ],
+
+                'students' => $studentRoster,
+
+                'statistics' => [
+                    'total' => $total,
+
+                    'present' => $present,
+
+                    'late' => $late,
+
+                    'absent' => $absent,
+                ],
+            ]
         );
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Registered Students Only
+    |--------------------------------------------------------------------------
+    */
+
+    private function getStudentsForSchedule(
+        Schedule $schedule
+    ): Collection {
+        return $schedule
+            ->registeredStudents()
+
+            /*
+            |--------------------------------------------------------------------------
+            | IMPORTANT FIX
+            |--------------------------------------------------------------------------
+            |
+            | Both users and schedule_student now contain "status".
+            |
+            | Therefore we MUST explicitly use:
+            |
+            | users.status
+            |
+            | and:
+            |
+            | schedule_student.status
+            |
+            */
+
+            ->where(
+                'users.role',
+                'student'
+            )
+
+            /*
+            |--------------------------------------------------------------------------
+            | Student Account Status
+            |--------------------------------------------------------------------------
+            */
+
+            ->where(
+                function ($query) {
+                    $query
+                        ->whereNull(
+                            'users.status'
+                        )
+                        ->orWhereRaw(
+                            'LOWER(users.status) != ?',
+                            [
+                                'inactive',
+                            ]
+                        );
+                }
+            )
+
+            /*
+            |--------------------------------------------------------------------------
+            | Class Registration Status
+            |--------------------------------------------------------------------------
+            */
+
+            ->where(
+                function ($query) {
+                    $query
+                        ->whereNull(
+                            'schedule_student.status'
+                        )
+                        ->orWhereRaw(
+                            'LOWER(schedule_student.status) = ?',
+                            [
+                                'active',
+                            ]
+                        );
+                }
+            )
+
+            ->orderBy(
+                'users.name'
+            )
+
+            ->get();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Normalize Days
+    |--------------------------------------------------------------------------
+    */
+
+    private function normalizeDays(
+        array|string|null $days
+    ): array {
+        if (! is_array($days)) {
+            if (
+                ! is_string($days) ||
+                trim($days) === ''
+            ) {
+                return [];
+            }
+
+            $decoded = json_decode(
+                $days,
+                true
+            );
+
+            $days =
+                is_array($decoded)
+                    ? $decoded
+                    : explode(
+                        ',',
+                        $days
+                    );
+        }
+
+        $map = [
+            'monday' => 'Mon',
+            'mon' => 'Mon',
+            'm' => 'Mon',
+
+            'tuesday' => 'Tue',
+            'tue' => 'Tue',
+            'tues' => 'Tue',
+
+            'wednesday' => 'Wed',
+            'wed' => 'Wed',
+            'w' => 'Wed',
+
+            'thursday' => 'Thu',
+            'thu' => 'Thu',
+            'thur' => 'Thu',
+            'thurs' => 'Thu',
+
+            'friday' => 'Fri',
+            'fri' => 'Fri',
+            'f' => 'Fri',
+
+            'saturday' => 'Sat',
+            'sat' => 'Sat',
+
+            'sunday' => 'Sun',
+            'sun' => 'Sun',
+        ];
+
+        return collect($days)
+            ->map(
+                function (
+                    $day
+                ) use (
+                    $map
+                ) {
+                    $key = strtolower(
+                        trim(
+                            (string) $day
+                        )
+                    );
+
+                    return
+                        $map[$key]
+                        ?? null;
+                }
+            )
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Format Time
+    |--------------------------------------------------------------------------
+    */
+
+    private function formatTime(
+        ?string $time
+    ): string {
+        if (! $time) {
+            return '';
+        }
+
+        try {
+            return Carbon::parse(
+                $time
+            )->format(
+                'h:i A'
+            );
+        } catch (\Throwable) {
+            return (string) $time;
+        }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Display Status
+    |--------------------------------------------------------------------------
+    */
 
     private function getDisplayStatus(
         Schedule $schedule
     ): string {
-        $savedStatus = strtolower(
-            (string) $schedule->status
-        );
+        $todayName =
+            now(
+                'Asia/Manila'
+            )->format('D');
+
+        $scheduleDays =
+            $this->normalizeDays(
+                $schedule->days
+            );
 
         if (
-            $savedStatus === 'completed' ||
-            $savedStatus === 'done'
+            ! in_array(
+                $todayName,
+                $scheduleDays,
+                true
+            )
         ) {
-            return 'Done';
-        }
-
-        if ($savedStatus === 'ongoing') {
-            return 'Ongoing';
+            return 'Upcoming';
         }
 
         if (
@@ -214,24 +860,43 @@ class InstructorDashboardController extends Controller
             return 'Upcoming';
         }
 
-        $now = now();
+        $now =
+            now(
+                'Asia/Manila'
+            );
 
-        $start = now()->setTimeFromTimeString(
-            $schedule->start_time
-        );
+        try {
+            $start =
+                Carbon::parse(
+                    $now
+                        ->toDateString()
+                    .' '.
+                    $schedule
+                        ->start_time,
+                    'Asia/Manila'
+                );
 
-        $end = now()->setTimeFromTimeString(
-            $schedule->end_time
-        );
+            $end =
+                Carbon::parse(
+                    $now
+                        ->toDateString()
+                    .' '.
+                    $schedule
+                        ->end_time,
+                    'Asia/Manila'
+                );
+        } catch (\Throwable) {
+            return 'Upcoming';
+        }
 
-        if ($now->greaterThan($end)) {
+        if ($now->lt($start)) {
+            return 'Upcoming';
+        }
+
+        if ($now->gt($end)) {
             return 'Done';
         }
 
-        if ($now->between($start, $end)) {
-            return 'Ongoing';
-        }
-
-        return 'Upcoming';
+        return 'Ongoing';
     }
 }

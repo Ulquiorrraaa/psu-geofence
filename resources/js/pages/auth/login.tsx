@@ -28,7 +28,7 @@ export default function Login({
 
             {/* TITLE */}
             <div className="mb-8 text-center">
-                <h1 className="text-5xl font-extrabold leading-tight text-[#710006]">
+                <h1 className="text-4xl leading-tight font-extrabold text-[#710006] sm:text-5xl">
                     GPS
                     <br />
                     Attendance
@@ -47,12 +47,11 @@ export default function Login({
                 {({ processing, errors }) => (
                     <>
                         <div className="grid gap-6">
-
                             {/* EMAIL */}
                             <div className="grid gap-2">
                                 <Label
                                     htmlFor="email"
-                                    className="text-[#710006] font-semibold text-base"
+                                    className="text-base font-semibold text-[#710006]"
                                 >
                                     Email Address
                                 </Label>
@@ -77,7 +76,7 @@ export default function Login({
                                 <div className="flex items-center">
                                     <Label
                                         htmlFor="password"
-                                        className="text-[#710006] font-semibold text-base"
+                                        className="text-base font-semibold text-[#710006]"
                                     >
                                         Password
                                     </Label>
@@ -139,7 +138,6 @@ export default function Login({
                         {canRegister && (
                             <div className="text-center text-sm text-gray-600">
                                 Don't have an account?{' '}
-
                                 <TextLink
                                     href={register()}
                                     tabIndex={5}

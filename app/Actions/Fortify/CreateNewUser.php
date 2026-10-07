@@ -22,7 +22,7 @@ class CreateNewUser implements CreatesNewUsers
 
             'role' => [
                 'sometimes',
-                'in:student,instructor',
+                'in:student',
             ],
 
             'password' => $this->passwordRules(),
@@ -39,7 +39,7 @@ class CreateNewUser implements CreatesNewUsers
                 $input['password']
             ),
 
-            'role' => $input['role'] ?? 'student',
+            'role' => 'student',
 
         ]);
 

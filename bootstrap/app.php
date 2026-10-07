@@ -1,6 +1,9 @@
 <?php
 
 use App\Http\Middleware\AdminMiddleware;
+use App\Http\Middleware\EnsureActiveAccount;
+use App\Http\Middleware\GuardMiddleware;
+use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\InstructorMiddleware;
 use App\Http\Middleware\StudentMiddleware;
 use Illuminate\Foundation\Application;
@@ -11,6 +14,7 @@ use Illuminate\Http\Request;
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
+        api: __DIR__.'/../routes/api.php',
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
@@ -24,8 +28,14 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'admin' => AdminMiddleware::class,
+            'guard' => GuardMiddleware::class,
             'instructor' => InstructorMiddleware::class,
             'student' => StudentMiddleware::class,
+        ]);
+
+        $middleware->web(append: [
+            EnsureActiveAccount::class,
+            HandleInertiaRequests::class,
         ]);
 
         /*
@@ -58,6 +68,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
             return match (strtolower(trim((string) $user->role))) {
                 'admin' => route('admin.dashboard'),
+                'guard' => route('guard.dashboard'),
                 'instructor' => route('dashboard'),
                 'student' => route('student.dashboard'),
                 default => route('home'),

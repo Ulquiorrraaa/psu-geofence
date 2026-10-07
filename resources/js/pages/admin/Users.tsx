@@ -1,11 +1,19 @@
-import { Head, router, usePage } from '@inertiajs/react';
-import { useMemo, useState } from 'react';
-import { Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Pencil, Plus, Search, X } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import ProfileAvatar from '@/components/profile-avatar';
 
 type Role = 'student' | 'instructor' | 'guard' | 'admin';
 
 type User = {
     id: number;
+    profile_picture_url?: string;
+    student_id?: string;
+    course?: string;
+    phone?: string;
+    employee_id?: string;
+    department?: string;
+    assigned_area?: string;
     name: string;
     email: string;
     role: Role | string;
@@ -19,11 +27,29 @@ type PageProps = {
     users: User[];
 };
 
+const normalizeGroup = (value: string) => value.trim().toLowerCase();
+const uniqueGroups = (values: string[]) =>
+    Array.from(
+        new Map(
+            values
+                .filter((value) => value?.trim() && value.trim() !== '—')
+                .map((value) => [normalizeGroup(value), value.trim()]),
+        ).values(),
+    ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
 export default function Users() {
     const { users = [] } = usePage().props as unknown as PageProps;
 
+    const { url } = usePage();
+    const [editingId, setEditingId] = useState<number | null>(null);
+    const [busy, setBusy] = useState(false);
+    const [formError, setFormError] = useState('');
+    const mutation = useRef(false);
     const [search, setSearch] = useState('');
-    const [role, setRole] = useState('All Roles');
+    const [role, setRole] = useState(
+        new URLSearchParams(url.split('?')[1] || '').get('role') || 'All Roles',
+    );
+    const [status, setStatus] = useState('');
     const [year, setYear] = useState('All Years');
     const [section, setSection] = useState('All Sections');
     const [showModal, setShowModal] = useState(false);
@@ -36,6 +62,12 @@ export default function Users() {
         name: '',
         email: '',
         password: '',
+        student_id: '',
+        course: '',
+        phone: '',
+        employee_id: '',
+        department: '',
+        assigned_area: '',
         role: 'instructor' as Role,
         year: '—',
         section: '—',
@@ -44,9 +76,35 @@ export default function Users() {
     });
 
     const instructors = users.filter(
-        (user) => user.role?.toLowerCase() === 'instructor',
+        (user) =>
+            user.role?.toLowerCase() === 'instructor' &&
+            user.status === 'Active',
     );
 
+    const studentUsers = users.filter(
+        (user) => user.role?.toLowerCase() === 'student',
+    );
+    const studentYears = uniqueGroups(
+        studentUsers.map((user) => user.year || ''),
+    );
+    const studentSections = uniqueGroups(
+        studentUsers.map((user) => user.section || ''),
+    );
+    const assignSections = uniqueGroups(
+        studentUsers
+            .filter(
+                (user) =>
+                    normalizeGroup(user.year || '') ===
+                    normalizeGroup(assignYear),
+            )
+            .map((user) => user.section || ''),
+    );
+    const assignmentCount = studentUsers.filter(
+        (user) =>
+            normalizeGroup(user.year || '') === normalizeGroup(assignYear) &&
+            normalizeGroup(user.section || '') ===
+                normalizeGroup(assignSection),
+    ).length;
     const filteredUsers = useMemo(() => {
         return users.filter((user) => {
             const keyword = search.toLowerCase();
@@ -55,19 +113,29 @@ export default function Users() {
             const matchesSearch =
                 user.name.toLowerCase().includes(keyword) ||
                 user.email.toLowerCase().includes(keyword) ||
+                (user.student_id || '').toLowerCase().includes(keyword) ||
                 user.id.toString().includes(keyword);
 
             const matchesRole =
                 role === 'All Roles' || userRole === role.toLowerCase();
 
-            const matchesYear = year === 'All Years' || user.year === year;
+            const matchesYear =
+                year === 'All Years' ||
+                normalizeGroup(user.year || '') === normalizeGroup(year);
 
             const matchesSection =
-                section === 'All Sections' || user.section === section;
+                section === 'All Sections' ||
+                normalizeGroup(user.section || '') === normalizeGroup(section);
 
-            return matchesSearch && matchesRole && matchesYear && matchesSection;
+            return (
+                matchesSearch &&
+                matchesRole &&
+                matchesYear &&
+                matchesSection &&
+                (!status || user.status === status)
+            );
         });
-    }, [users, search, role, year, section]);
+    }, [users, search, role, year, section, status]);
 
     const totalUsers = users.length;
 
@@ -86,27 +154,59 @@ export default function Users() {
     function createUser(e: React.FormEvent) {
         e.preventDefault();
 
-        router.post('/admin/users', form, {
+        if (mutation.current) {
+            return;
+        }
+
+        mutation.current = true;
+        setBusy(true);
+        setFormError('');
+        const options = {
+            preserveScroll: true,
             onSuccess: () => {
                 setShowModal(false);
-
                 setForm({
                     name: '',
                     email: '',
                     password: '',
-                    role: 'instructor',
-                    year: '—',
-                    section: '—',
-                    adviser: '—',
-                    status: 'Active',
+                    student_id: '',
+                    course: '',
+                    phone: '',
+                    employee_id: '',
+                    department: '',
+                    assigned_area: '',
+                    role: 'instructor' as Role,
+                    year: '',
+                    section: '',
+                    adviser: '',
+                    status: 'Active' as const,
                 });
             },
-        });
-    }
+            onError: (errors: Record<string, string>) =>
+                setFormError(
+                    Object.values(errors)[0] ??
+                        'The account could not be saved.',
+                ),
+            onFinish: () => {
+                mutation.current = false;
+                setBusy(false);
+            },
+        };
 
+        if (editingId) {
+            router.put('/admin/users/' + editingId, form, options);
+        } else {
+            router.post('/admin/users', form, options);
+        }
+    }
     function openAssignModal() {
-        if (!assignYear || !assignSection) {
-            alert('Please select year level and section first.');
+        setFormError('');
+
+        if (!assignYear || !assignSection || !assignmentCount) {
+            setFormError(
+                'Choose a year level and section with registered student accounts.',
+            );
+
             return;
         }
 
@@ -114,56 +214,92 @@ export default function Users() {
     }
 
     function assignAdviser(instructor: User) {
+        if (mutation.current) {
+            return;
+        }
+
+        mutation.current = true;
+        setBusy(true);
+        setFormError('');
         router.put(
             '/admin/users/assign-adviser',
             {
                 year: assignYear,
                 section: assignSection,
-                adviser: instructor.name,
+                instructor_id: instructor.id,
             },
             {
+                preserveScroll: true,
                 onSuccess: () => {
                     setShowAssignModal(false);
                     setAssignYear('');
                     setAssignSection('');
                 },
+                onError: (errors) =>
+                    setFormError(
+                        Object.values(errors)[0] ||
+                            'The adviser could not be assigned.',
+                    ),
+                onFinish: () => {
+                    mutation.current = false;
+                    setBusy(false);
+                },
             },
         );
-    }
-
-    function deleteUser(id: number) {
-        if (confirm('Delete this user?')) {
-            router.delete(`/admin/users/${id}`);
-        }
     }
 
     return (
         <>
             <Head title="Users" />
+            {formError && (
+                <p role="alert" className="p-4 text-red-700">
+                    {formError}
+                </p>
+            )}
 
-            <div className="min-h-screen bg-gray-50 p-6 text-gray-900">
-                <div className="mb-6 flex items-center justify-between">
+            <div className="min-h-full bg-[#f7f8fa] p-5 text-gray-900 sm:p-7">
+                <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-950">
+                        <h1 className="text-3xl font-bold tracking-tight text-[#8f001f]">
                             User Management
                         </h1>
 
-                        <p className="text-lg text-gray-700">
+                        <p className="mt-1 text-base text-gray-600">
                             Manage IT students, instructors, guards, and
                             administrators
                         </p>
                     </div>
 
                     <button
-                        onClick={() => setShowModal(true)}
-                        className="flex items-center gap-2 rounded-xl bg-red-800 px-6 py-3 text-lg font-bold text-white hover:bg-red-900"
+                        onClick={() => {
+                            setEditingId(null);
+                            setForm({
+                                name: '',
+                                email: '',
+                                password: '',
+                                student_id: '',
+                                course: '',
+                                phone: '',
+                                employee_id: '',
+                                department: '',
+                                assigned_area: '',
+                                role: 'instructor',
+                                year: '',
+                                section: '',
+                                adviser: '',
+                                status: 'Active',
+                            });
+                            setFormError('');
+                            setShowModal(true);
+                        }}
+                        className="flex items-center justify-center gap-2 rounded-lg bg-[#970027] px-5 py-3 text-base font-semibold text-white transition hover:bg-[#790020]"
                     >
                         <Plus size={20} />
                         Add User
                     </button>
                 </div>
 
-                <div className="mb-5 grid gap-5 md:grid-cols-4">
+                <div className="mb-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
                     <StatCard title="Total Users" value={totalUsers} />
 
                     <StatCard
@@ -185,16 +321,16 @@ export default function Users() {
                     />
                 </div>
 
-                <div className="mb-5 rounded-xl border bg-white p-5 shadow-sm">
+                <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
                     <div className="grid gap-4 lg:grid-cols-[1fr_140px_140px_160px]">
                         <div className="relative">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
+                            <Search className="absolute top-1/2 left-4 -translate-y-1/2 text-gray-500" />
 
                             <input
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                                 placeholder="Search by name, email, or ID..."
-                                className="w-full rounded-xl border px-12 py-3 text-lg text-gray-900 outline-none focus:border-red-800"
+                                className="w-full rounded-lg border border-gray-300 px-12 py-3 text-base text-gray-900 outline-none focus:border-[#970027]"
                             />
                         </div>
 
@@ -216,11 +352,11 @@ export default function Users() {
                             className="rounded-xl border bg-white px-4 py-3 text-lg text-gray-900"
                         >
                             <option>All Years</option>
-                            <option>1st Year</option>
-                            <option>2nd Year</option>
-                            <option>3rd Year</option>
-                            <option>4th Year</option>
-                            <option>—</option>
+                            {studentYears.map((value) => (
+                                <option key={value} value={value}>
+                                    {value}
+                                </option>
+                            ))}
                         </select>
 
                         <select
@@ -229,10 +365,11 @@ export default function Users() {
                             className="rounded-xl border bg-white px-4 py-3 text-lg text-gray-900"
                         >
                             <option>All Sections</option>
-                            <option>A</option>
-                            <option>B</option>
-                            <option>C</option>
-                            <option>—</option>
+                            {studentSections.map((value) => (
+                                <option key={value} value={value}>
+                                    {value}
+                                </option>
+                            ))}
                         </select>
                     </div>
 
@@ -244,17 +381,22 @@ export default function Users() {
 
                             <select
                                 value={assignYear}
-                                onChange={(e) => setAssignYear(e.target.value)}
+                                onChange={(e) => {
+                                    setAssignYear(e.target.value);
+                                    setAssignSection('');
+                                }}
                                 className="rounded-xl border bg-white px-4 py-3 text-lg text-gray-900"
                             >
                                 <option value="">Year Level</option>
-                                <option>1st Year</option>
-                                <option>2nd Year</option>
-                                <option>3rd Year</option>
-                                <option>4th Year</option>
+                                {studentYears.map((value) => (
+                                    <option key={value} value={value}>
+                                        {value}
+                                    </option>
+                                ))}
                             </select>
 
                             <select
+                                disabled={!assignYear || busy}
                                 value={assignSection}
                                 onChange={(e) =>
                                     setAssignSection(e.target.value)
@@ -262,15 +404,18 @@ export default function Users() {
                                 className="rounded-xl border bg-white px-4 py-3 text-lg text-gray-900"
                             >
                                 <option value="">Section</option>
-                                <option>A</option>
-                                <option>B</option>
-                                <option>C</option>
+                                {assignSections.map((value) => (
+                                    <option key={value} value={value}>
+                                        {value}
+                                    </option>
+                                ))}
                             </select>
 
                             <button
                                 type="button"
                                 onClick={openAssignModal}
-                                className="rounded-xl bg-red-800 px-6 py-3 text-lg font-bold text-white hover:bg-red-900"
+                                disabled={busy || !assignmentCount}
+                                className="rounded-lg bg-[#970027] px-5 py-3 text-base font-semibold text-white transition hover:bg-[#790020]"
                             >
                                 Assign Adviser
                             </button>
@@ -278,9 +423,14 @@ export default function Users() {
                     </div>
                 </div>
 
-                <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
-                    <table className="w-full table-fixed text-left">
-                        <thead className="bg-gray-50 text-sm font-bold uppercase tracking-wide text-gray-600">
+                <p className="mb-4 text-sm text-gray-600">
+                    Adviser assignment uses existing student records. Choose a
+                    year level and section; all matching students will receive
+                    the selected adviser.
+                </p>
+                <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+                    <table className="w-full min-w-[900px] table-fixed text-left">
+                        <thead className="bg-gray-50 text-sm font-bold tracking-wide text-gray-600 uppercase">
                             <tr>
                                 <th className="w-[26%] px-6 py-5">User</th>
                                 <th className="w-[13%] px-6 py-5">Role</th>
@@ -299,16 +449,41 @@ export default function Users() {
                                         <td className="px-6 py-5">
                                             <div className="flex items-center gap-3">
                                                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-200 font-bold text-gray-700">
-                                                    {user.name.charAt(0)}
+                                                    <ProfileAvatar
+                                                        name={user.name}
+                                                        url={
+                                                            user.profile_picture_url
+                                                        }
+                                                        className="size-10"
+                                                    />
                                                 </div>
 
                                                 <div>
                                                     <h3 className="font-bold text-gray-950">
-                                                        {user.name}
+                                                        <Link
+                                                            href={
+                                                                '/admin/users/' +
+                                                                user.id
+                                                            }
+                                                        >
+                                                            {user.name}
+                                                        </Link>
                                                     </h3>
 
                                                     <p className="text-sm text-gray-600">
                                                         {user.email}
+                                                        <span className="block text-xs text-gray-500">
+                                                            {[
+                                                                user.student_id,
+                                                                user.course,
+                                                                user.employee_id,
+                                                                user.department,
+                                                                user.assigned_area,
+                                                                user.phone,
+                                                            ]
+                                                                .filter(Boolean)
+                                                                .join(' · ')}
+                                                        </span>
                                                     </p>
                                                 </div>
                                             </div>
@@ -350,17 +525,98 @@ export default function Users() {
 
                                         <td className="px-6 py-5">
                                             <div className="flex gap-4 text-red-800">
-                                                <button type="button">
-                                                    <Pencil size={20} />
+                                                <button
+                                                    disabled={busy}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (
+                                                            confirm(
+                                                                user.status ===
+                                                                    'Active'
+                                                                    ? 'Deactivate this account and retain its records?'
+                                                                    : 'Activate this account?',
+                                                            )
+                                                        ) {
+                                                            setBusy(true);
+                                                            router.patch(
+                                                                '/admin/users/' +
+                                                                    user.id +
+                                                                    '/status',
+                                                                {
+                                                                    status:
+                                                                        user.status ===
+                                                                        'Active'
+                                                                            ? 'Inactive'
+                                                                            : 'Active',
+                                                                },
+                                                                {
+                                                                    preserveScroll: true,
+                                                                    onFinish:
+                                                                        () =>
+                                                                            setBusy(
+                                                                                false,
+                                                                            ),
+                                                                    onError: (
+                                                                        errors,
+                                                                    ) =>
+                                                                        setFormError(
+                                                                            Object.values(
+                                                                                errors,
+                                                                            )[0] ||
+                                                                                'Unable to update status.',
+                                                                        ),
+                                                                },
+                                                            );
+                                                        }
+                                                    }}
+                                                >
+                                                    {user.status === 'Active'
+                                                        ? 'Deactivate'
+                                                        : 'Activate'}
                                                 </button>
-
                                                 <button
                                                     type="button"
-                                                    onClick={() =>
-                                                        deleteUser(user.id)
-                                                    }
+                                                    aria-label={`Edit ${user.name}`}
+                                                    onClick={() => {
+                                                        setEditingId(user.id);
+                                                        setForm({
+                                                            student_id:
+                                                                user.student_id ||
+                                                                '',
+                                                            course:
+                                                                user.course ||
+                                                                '',
+                                                            phone:
+                                                                user.phone ||
+                                                                '',
+                                                            employee_id:
+                                                                user.employee_id ||
+                                                                '',
+                                                            department:
+                                                                user.department ||
+                                                                '',
+                                                            assigned_area:
+                                                                user.assigned_area ||
+                                                                '',
+                                                            name: user.name,
+                                                            email: user.email,
+                                                            password: '',
+                                                            role: user.role as Role,
+                                                            year:
+                                                                user.year ?? '',
+                                                            section:
+                                                                user.section ??
+                                                                '',
+                                                            adviser:
+                                                                user.adviser ??
+                                                                '',
+                                                            status: user.status,
+                                                        });
+                                                        setFormError('');
+                                                        setShowModal(true);
+                                                    }}
                                                 >
-                                                    <Trash2 size={20} />
+                                                    <Pencil size={20} />
                                                 </button>
                                             </div>
                                         </td>
@@ -380,19 +636,55 @@ export default function Users() {
                     </table>
                 </div>
 
+                <div className="mt-4 flex flex-wrap gap-3">
+                    <label>
+                        Account status{' '}
+                        <select
+                            className="ml-2 rounded-lg border p-2"
+                            value={status}
+                            onChange={(event) => setStatus(event.target.value)}
+                        >
+                            <option value="">All statuses</option>
+                            <option>Active</option>
+                            <option>Inactive</option>
+                        </select>
+                    </label>
+                    {['student', 'instructor', 'guard', 'admin'].map(
+                        (value) => (
+                            <button
+                                key={value}
+                                className="rounded-lg border bg-white px-4 py-2 capitalize"
+                                onClick={() => setRole(value)}
+                            >
+                                {value}s
+                            </button>
+                        ),
+                    )}
+                </div>
                 {showAssignModal && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                        <div className="w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-xl">
+                        <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl bg-white shadow-xl">
                             <div className="border-b px-7 py-6">
                                 <h2 className="text-2xl font-bold text-gray-950">
-                                    Assign Adviser to {assignYear} - Section{' '}
+                                    Assign Adviser to {assignmentCount}{' '}
+                                    student(s): {assignYear} - Section{' '}
                                     {assignSection}
                                 </h2>
                             </div>
 
                             <div className="px-7 py-6">
+                                {formError && (
+                                    <p
+                                        role="alert"
+                                        className="mb-4 text-red-700"
+                                    >
+                                        {formError}
+                                    </p>
+                                )}
                                 <p className="mb-5 text-gray-600">
-                                    Select an instructor to assign as adviser:
+                                    {busy
+                                        ? 'Assigning adviser…'
+                                        : 'Select an active instructor to assign as adviser:'}
                                 </p>
 
                                 <div className="space-y-3">
@@ -404,7 +696,8 @@ export default function Users() {
                                                 onClick={() =>
                                                     assignAdviser(instructor)
                                                 }
-                                                className="w-full rounded-xl border p-5 text-left hover:border-red-800 hover:bg-red-50"
+                                                disabled={busy}
+                                                className="w-full rounded-xl border p-5 text-left hover:border-red-800 hover:bg-red-50 disabled:opacity-50"
                                             >
                                                 <h3 className="text-lg font-bold text-gray-950">
                                                     {instructor.name}
@@ -440,12 +733,14 @@ export default function Users() {
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
                         <form
                             onSubmit={createUser}
-                            className="w-full max-w-xl rounded-xl bg-white p-6 shadow-xl"
+                            className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl"
                         >
                             <div className="mb-5 flex items-center justify-between">
                                 <div>
                                     <h2 className="text-2xl font-bold text-gray-950">
-                                        Create User Account
+                                        {editingId
+                                            ? 'Edit User Account'
+                                            : 'Create User Account'}
                                     </h2>
 
                                     <p className="text-gray-600">
@@ -463,6 +758,59 @@ export default function Users() {
                             </div>
 
                             <div className="space-y-4">
+                                {(
+                                    [
+                                        'student_id',
+                                        'course',
+                                        'phone',
+                                        'employee_id',
+                                        'department',
+                                        'assigned_area',
+                                    ] as const
+                                )
+                                    .filter((key) =>
+                                        form.role === 'student'
+                                            ? [
+                                                  'student_id',
+                                                  'course',
+                                                  'phone',
+                                              ].includes(key)
+                                            : form.role === 'instructor'
+                                              ? [
+                                                    'phone',
+                                                    'employee_id',
+                                                    'department',
+                                                ].includes(key)
+                                              : form.role === 'guard'
+                                                ? [
+                                                      'phone',
+                                                      'employee_id',
+                                                      'assigned_area',
+                                                  ].includes(key)
+                                                : [
+                                                      'phone',
+                                                      'employee_id',
+                                                  ].includes(key),
+                                    )
+                                    .map((key) => (
+                                        <label
+                                            key={key}
+                                            className="block text-sm capitalize"
+                                        >
+                                            {key.replaceAll('_', ' ')}
+                                            <input
+                                                className="mt-1 w-full rounded-lg border p-3"
+                                                value={form[key]}
+                                                onChange={(event) =>
+                                                    setForm({
+                                                        ...form,
+                                                        [key]: event.target
+                                                            .value,
+                                                    })
+                                                }
+                                            />
+                                        </label>
+                                    ))}
                                 <input
                                     required
                                     value={form.name}
@@ -491,7 +839,8 @@ export default function Users() {
                                 />
 
                                 <input
-                                    required
+                                    required={!editingId}
+                                    minLength={8}
                                     type="password"
                                     value={form.password}
                                     onChange={(e) =>
@@ -584,11 +933,19 @@ export default function Users() {
                                     </div>
                                 )}
 
+                                {formError && (
+                                    <p role="alert" className="text-red-700">
+                                        {formError}
+                                    </p>
+                                )}
                                 <button
+                                    disabled={busy}
                                     type="submit"
-                                    className="w-full rounded-xl bg-red-800 px-6 py-3 text-lg font-bold text-white hover:bg-red-900"
+                                    className="w-full rounded-lg bg-[#970027] px-5 py-3 text-base font-semibold text-white transition hover:bg-[#790020]"
                                 >
-                                    Create Account
+                                    {editingId
+                                        ? 'Edit Account'
+                                        : 'Create Account'}
                                 </button>
                             </div>
                         </form>
@@ -609,7 +966,7 @@ function StatCard({
     color?: string;
 }) {
     return (
-        <div className="rounded-xl border bg-white p-5 shadow-sm">
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
             <p className="text-gray-700">{title}</p>
             <h2 className={`text-3xl font-bold ${color}`}>{value}</h2>
         </div>
@@ -619,10 +976,21 @@ function StatCard({
 function roleColor(role: string) {
     const normalizedRole = role.toLowerCase();
 
-    if (normalizedRole === 'student') return 'bg-green-100 text-green-700';
-    if (normalizedRole === 'instructor') return 'bg-purple-100 text-purple-700';
-    if (normalizedRole === 'guard') return 'bg-orange-100 text-orange-700';
-    if (normalizedRole === 'admin') return 'bg-purple-100 text-purple-700';
+    if (normalizedRole === 'student') {
+        return 'bg-green-100 text-green-700';
+    }
+
+    if (normalizedRole === 'instructor') {
+        return 'bg-purple-100 text-purple-700';
+    }
+
+    if (normalizedRole === 'guard') {
+        return 'bg-orange-100 text-orange-700';
+    }
+
+    if (normalizedRole === 'admin') {
+        return 'bg-purple-100 text-purple-700';
+    }
 
     return 'bg-gray-100 text-gray-700';
 }

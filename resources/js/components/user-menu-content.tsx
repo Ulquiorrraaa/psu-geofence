@@ -41,13 +41,7 @@ export function UserMenuContent({ user }: Props) {
             <DropdownMenuGroup>
                 <DropdownMenuItem
                     asChild
-                    className="
-                        cursor-pointer
-                        text-white
-                        focus:bg-[#8C0710]
-                        hover:bg-[#8C0710]
-                        focus:text-white
-                    "
+                    className="cursor-pointer text-white hover:bg-[#8C0710] focus:bg-[#8C0710] focus:text-white"
                 >
                     <Link
                         className="flex w-full items-center"
@@ -65,13 +59,7 @@ export function UserMenuContent({ user }: Props) {
 
             <DropdownMenuItem
                 asChild
-                className="
-                    cursor-pointer
-                    text-white
-                    focus:bg-[#8C0710]
-                    hover:bg-[#8C0710]
-                    focus:text-white
-                "
+                className="cursor-pointer text-white hover:bg-[#8C0710] focus:bg-[#8C0710] focus:text-white"
             >
                 <Link
                     className="flex w-full items-center"

@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        php-version: ['8.3', '8.4', '8.5']
+        php-version: ['8.4', '8.5']
 
     steps:
       - name: Checkout code
@@ -38,7 +38,7 @@ jobs:
           node-version: '22'
 
       - name: Install Node Dependencies
-        run: npm i
+        run: npm ci
 
       - name: Install Dependencies
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
@@ -51,6 +51,12 @@ jobs:
 
       - name: Build Assets
         run: npm run build
+
+      - name: Type checks
+        run: npm run types:check
+
+      - name: GPS tests
+        run: npm run test:gps
 
       - name: Tests
         run: ./vendor/bin/phpunit

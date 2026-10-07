@@ -30,17 +30,11 @@ export function NavMain({ items = [] }: { items: NavItem[] }) {
                                 asChild
                                 isActive={active}
                                 tooltip={{ children: item.title }}
-                                className={`
-                                    h-14 rounded-2xl px-5 text-lg font-bold transition-all
-
-                                    ${
-                                        active
-                                            ? '!bg-[#8C0710] !text-white hover:!bg-[#8C0710]'
-                                            : '!text-white hover:!bg-[#A60D16]'
-                                    }
-
-                                    [&_svg]:!text-white
-                                `}
+                                className={`h-14 rounded-2xl px-5 text-lg font-bold transition-all ${
+                                    active
+                                        ? '!bg-[#8C0710] !text-white hover:!bg-[#8C0710]'
+                                        : '!text-white hover:!bg-[#A60D16]'
+                                } [&_svg]:!text-white`}
                             >
                                 <Link
                                     href={item.href}

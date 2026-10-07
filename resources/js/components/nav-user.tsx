@@ -34,18 +34,7 @@ export function NavUser() {
                     <DropdownMenuTrigger asChild>
                         <SidebarMenuButton
                             size="lg"
-                            className="
-                                h-16 rounded-2xl px-4 text-white
-                                !bg-[#8C0710]
-                                hover:!bg-[#9E0B14]
-                                data-[state=open]:!bg-[#8C0710]
-                                data-[state=open]:!text-white
-                                [&_span]:!text-white
-                                [&_p]:!text-white
-                                [&_svg]:!text-white
-                                [&_.bg-muted]:!bg-[#5E0B10]
-                                [&_.bg-sidebar-accent]:!bg-[#5E0B10]
-                            "
+                            className="h-16 rounded-2xl !bg-[#8C0710] px-4 text-white hover:!bg-[#9E0B14] data-[state=open]:!bg-[#8C0710] data-[state=open]:!text-white [&_.bg-muted]:!bg-[#5E0B10] [&_.bg-sidebar-accent]:!bg-[#5E0B10] [&_p]:!text-white [&_span]:!text-white [&_svg]:!text-white"
                             data-test="sidebar-menu-button"
                         >
                             <UserInfo user={auth.user} />
@@ -55,14 +44,7 @@ export function NavUser() {
                     </DropdownMenuTrigger>
 
                     <DropdownMenuContent
-                        className="
-                            w-(--radix-dropdown-menu-trigger-width)
-                            min-w-56
-                            rounded-lg
-                            border-[#8C0710]
-                            bg-[#74000C]
-                            text-white
-                        "
+                        className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg border-[#8C0710] bg-[#74000C] text-white"
                         align="end"
                         side={
                             isMobile
@@ -72,9 +54,7 @@ export function NavUser() {
                                   : 'bottom'
                         }
                     >
-                        {auth?.user && (
-                            <UserMenuContent user={auth.user} />
-                        )}
+                        {auth?.user && <UserMenuContent user={auth.user} />}
                     </DropdownMenuContent>
                 </DropdownMenu>
             </SidebarMenuItem>

@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\StudentNotificationService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -39,15 +40,14 @@ class HandleInertiaRequests extends Middleware
         return [
             ...parent::share($request),
             'name' => config('app.name'),
+            'flash' => ['success' => fn () => $request->session()->get('success'), 'error' => fn () => $request->session()->get('error')],
             'auth' => [
-                'user' => $request->user() ? [
-                    'id' => $request->user()->id,
-                    'name' => $request->user()->name,
-                    'email' => $request->user()->email,
-                    'role' => $request->user()->role,
-                ] : null,
+                'user' => $request->user()?->only(['id', 'name', 'email', 'role', 'email_verified_at', 'created_at', 'updated_at', 'course', 'year', 'section', 'student_id', 'profile_picture_url']),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+            'studentNotifications' => fn () => $request->user()?->role === 'student'
+                ? app(StudentNotificationService::class)->feed($request->user())['notifications']
+                : [],
         ];
     }
 }

@@ -99,17 +99,17 @@
     --radius: 0.625rem;
 
     /* SIDEBAR COLORS */
-    --sidebar: #8B000F;
+    --sidebar: #8b000f;
     --sidebar-foreground: #ffffff;
 
-    --sidebar-primary: #8C0710;
+    --sidebar-primary: #8c0710;
     --sidebar-primary-foreground: #ffffff;
 
-    --sidebar-accent: #A60D16;
+    --sidebar-accent: #a60d16;
     --sidebar-accent-foreground: #ffffff;
 
     --sidebar-border: #720009;
-    --sidebar-ring: #B1121B;
+    --sidebar-ring: #b1121b;
 }
 
 .dark {
@@ -147,17 +147,17 @@
     --chart-4: oklch(0.627 0.265 303.9);
     --chart-5: oklch(0.645 0.246 16.439);
 
-    --sidebar: #8B000F;
+    --sidebar: #8b000f;
     --sidebar-foreground: #ffffff;
 
-    --sidebar-primary: #8C0710;
+    --sidebar-primary: #8c0710;
     --sidebar-primary-foreground: #ffffff;
 
-    --sidebar-accent: #A60D16;
+    --sidebar-accent: #a60d16;
     --sidebar-accent-foreground: #ffffff;
 
     --sidebar-border: #720009;
-    --sidebar-ring: #B1121B;
+    --sidebar-ring: #b1121b;
 }
 
 @layer base {
@@ -177,14 +177,14 @@
 }
 
 ::-webkit-scrollbar-track {
-    background: #74000C;
+    background: #74000c;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: #A60D16;
+    background: #a60d16;
     border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: #C1121F;
+    background: #c1121f;
 }

@@ -1,16 +1,19 @@
-import { Head } from '@inertiajs/react';
+import { Head, router } from '@inertiajs/react';
 import {
     CalendarDays,
+    Check,
     CheckCircle2,
     Clock3,
     Download,
     Filter,
     Minus,
-    Plus,
     Settings,
+    Wifi,
+    X,
     XCircle,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { csvCell } from '@/lib/csv';
 
 type AttendanceStatus = 'present_gps' | 'present_manual' | 'late' | 'absent';
 
@@ -20,6 +23,7 @@ interface Student {
     name: string;
     year: string;
     section: string;
+    subject_id?: number;
 }
 
 interface Subject {
@@ -29,49 +33,122 @@ interface Subject {
 
 interface AttendanceRecord {
     student_id: number;
+    schedule_id: number;
     date: string;
     status: AttendanceStatus;
+    gps_locked?: boolean;
 }
 
 interface Props {
     students?: Student[];
     subjects?: Subject[];
     attendance?: AttendanceRecord[];
+    today: string;
+    calendar: Record<
+        string,
+        Record<string, 'non_class' | 'pending' | 'ongoing' | 'finished'>
+    >;
 }
 
-const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+interface DayData {
+    day: string;
+    date: Date;
+    dateKey: string;
+    displayDate: string;
+}
+
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export default function Attendance({
     students = [],
     subjects = [],
     attendance = [],
+    today,
+    calendar,
 }: Props) {
-    const [showSettings, setShowSettings] = useState(true);
+    /*
+    |--------------------------------------------------------------------------
+    | SETTINGS
+    |--------------------------------------------------------------------------
+    */
+
+    const gpsLocked = useMemo(
+        () =>
+            new Set(
+                attendance
+                    .filter((record) => record.gps_locked)
+                    .map(
+                        (record) =>
+                            `${record.schedule_id}-${record.student_id}-${record.date}`,
+                    ),
+            ),
+        [attendance],
+    );
+    const saving = useRef(false);
+    const [savingKey, setSavingKey] = useState<string | null>(null);
+    const [saveError, setSaveError] = useState('');
+    const [showSettings, setShowSettings] = useState(false);
 
     const [weeks, setWeeks] = useState(4);
+
+    // Screenshot uses Monday-Saturday.
     const [daysPerWeek, setDaysPerWeek] = useState(6);
 
-    const [startDate, setStartDate] = useState('2026-05-05');
+    const [startDate, setStartDate] = useState(() => today);
 
-    const [selectedSubject, setSelectedSubject] = useState('');
-    const [selectedYear, setSelectedYear] = useState('');
-    const [selectedSection, setSelectedSection] = useState('');
+    /*
+    |--------------------------------------------------------------------------
+    | FILTERS
+    |--------------------------------------------------------------------------
+    */
 
-    const [records, setRecords] = useState<Record<string, AttendanceStatus>>(
-        () => {
-            const result: Record<string, AttendanceStatus> = {};
-
-            attendance.forEach((item) => {
-                result[`${item.student_id}-${item.date}`] = item.status;
-            });
-
-            return result;
-        },
+    const [selectedSubject, setSelectedSubject] = useState<string>(
+        subjects.length > 0 ? String(subjects[0].id) : '',
     );
 
-    /**
-     * Get the Monday for whatever start date was selected.
-     */
+    const [selectedYear, setSelectedYear] = useState('');
+
+    const [selectedSection, setSelectedSection] = useState('');
+
+    /*
+    |--------------------------------------------------------------------------
+    | ATTENDANCE RECORDS
+    |--------------------------------------------------------------------------
+    */
+
+    const records = useMemo(() => {
+        const result: Record<string, AttendanceStatus> = {};
+        attendance.forEach((item) => {
+            result[item.schedule_id + '-' + item.student_id + '-' + item.date] =
+                item.status;
+        });
+
+        return result;
+    }, [attendance]);
+
+    useEffect(() => {
+        router.reload({
+            data: { sheet_start: startDate, sheet_weeks: weeks },
+            only: ['attendance', 'calendar', 'today'],
+        });
+        const poll = router.poll(15000, {
+            data: { sheet_start: startDate, sheet_weeks: weeks },
+            only: ['attendance', 'calendar', 'today'],
+            onBefore: () => !saving.current,
+        });
+
+        return () => poll.stop();
+    }, [startDate, weeks]);
+
+    /*
+    |--------------------------------------------------------------------------
+    | NORMALIZED START DATE
+    |--------------------------------------------------------------------------
+    |
+    | Whatever date is selected, the sheet starts on Monday.
+    |
+    */
+
     const normalizedStartDate = useMemo(() => {
         const date = new Date(`${startDate}T00:00:00`);
 
@@ -79,12 +156,9 @@ export default function Attendance({
             return new Date();
         }
 
-        const day = date.getDay();
+        const currentDay = date.getDay();
 
-        const difference =
-            day === 0
-                ? -6
-                : 1 - day;
+        const difference = currentDay === 0 ? -6 : 1 - currentDay;
 
         const monday = new Date(date);
 
@@ -93,18 +167,19 @@ export default function Attendance({
         return monday;
     }, [startDate]);
 
-    /**
-     * Generates Week 1, Week 2, etc.
-     */
-    const generatedWeeks = useMemo(() => {
+    /*
+    |--------------------------------------------------------------------------
+    | GENERATED WEEKS
+    |--------------------------------------------------------------------------
+    */
+
+    const generatedWeeks = useMemo<DayData[][]>(() => {
         return Array.from({ length: weeks }, (_, weekIndex) => {
             return Array.from({ length: daysPerWeek }, (_, dayIndex) => {
                 const date = new Date(normalizedStartDate);
 
                 date.setDate(
-                    normalizedStartDate.getDate() +
-                        weekIndex * 7 +
-                        dayIndex,
+                    normalizedStartDate.getDate() + weekIndex * 7 + dayIndex,
                 );
 
                 return {
@@ -117,55 +192,114 @@ export default function Attendance({
         });
     }, [weeks, daysPerWeek, normalizedStartDate]);
 
-    /**
-     * Available year filters.
-     */
+    /*
+    |--------------------------------------------------------------------------
+    | YEARS
+    |--------------------------------------------------------------------------
+    */
+
     const years = useMemo(() => {
         return Array.from(
             new Set(students.map((student) => student.year).filter(Boolean)),
         );
     }, [students]);
 
-    /**
-     * Available section filters.
-     */
+    /*
+    |--------------------------------------------------------------------------
+    | SECTIONS
+    |--------------------------------------------------------------------------
+    */
+
     const sections = useMemo(() => {
         return Array.from(
             new Set(
-                students.map((student) => student.section).filter(Boolean),
+                students
+                    .filter((student) => {
+                        if (!selectedYear) {
+                            return true;
+                        }
+
+                        return student.year === selectedYear;
+                    })
+                    .map((student) => student.section)
+                    .filter(Boolean),
             ),
         );
-    }, [students]);
+    }, [students, selectedYear]);
 
-    /**
-     * Filter students.
-     */
+    /*
+    |--------------------------------------------------------------------------
+    | SELECTED SUBJECT
+    |--------------------------------------------------------------------------
+    */
+
+    const activeSubject = useMemo(() => {
+        if (!selectedSubject) {
+            return null;
+        }
+
+        return subjects.find(
+            (subject) => String(subject.id) === selectedSubject,
+        );
+    }, [subjects, selectedSubject]);
+
+    /*
+    |--------------------------------------------------------------------------
+    | FILTERED STUDENTS
+    |--------------------------------------------------------------------------
+    */
+
     const filteredStudents = useMemo(() => {
         return students.filter((student) => {
-            const matchesYear =
-                !selectedYear || student.year === selectedYear;
+            const matchesYear = !selectedYear || student.year === selectedYear;
 
             const matchesSection =
                 !selectedSection || student.section === selectedSection;
 
-            return matchesYear && matchesSection;
-        });
-    }, [students, selectedYear, selectedSection]);
+            /*
+             * If your backend sends subject_id for students,
+             * the subject filter will work automatically.
+             *
+             * If subject_id is not sent, all students remain visible.
+             */
+            const matchesSubject =
+                !selectedSubject ||
+                String(student.subject_id) === selectedSubject;
 
-    /**
-     * Attendance totals.
-     */
+            return matchesYear && matchesSection && matchesSubject;
+        });
+    }, [students, selectedSubject, selectedYear, selectedSection]);
+
+    /*
+    |--------------------------------------------------------------------------
+    | SUMMARY
+    |--------------------------------------------------------------------------
+    */
+
     const summary = useMemo(() => {
         let present = 0;
         let late = 0;
         let absent = 0;
         let gps = 0;
 
-        Object.values(records).forEach((status) => {
+        /*
+         * Only count attendance belonging to visible students.
+         */
+        const visibleStudentIds = new Set(
+            filteredStudents.map((student) => student.id),
+        );
+
+        Object.entries(records).forEach(([recordKey, status]) => {
+            const studentId = Number(recordKey.split('-')[1]);
+
             if (
-                status === 'present_gps' ||
-                status === 'present_manual'
+                recordKey.split('-')[0] !== selectedSubject ||
+                !visibleStudentIds.has(studentId)
             ) {
+                return;
+            }
+
+            if (status === 'present_gps' || status === 'present_manual') {
                 present++;
             }
 
@@ -188,77 +322,102 @@ export default function Attendance({
             absent,
             gps,
         };
-    }, [records]);
+    }, [records, filteredStudents, selectedSubject]);
 
-    /**
-     * Change attendance status when clicking a cell.
-     *
-     * Order:
-     * Empty -> Manual Present -> Late -> Absent -> Empty
-     *
-     * GPS attendance should normally be recorded automatically
-     * by your GPS/geofence backend.
-     */
+    /*
+    |--------------------------------------------------------------------------
+    | ATTENDANCE TOGGLE
+    |--------------------------------------------------------------------------
+    |
+    | Empty
+    | ↓
+    | Present Manual
+    | ↓
+    | Late
+    | ↓
+    | Absent
+    | ↓
+    | Present Manual
+    |
+    | GPS attendance is protected from manual changes.
+    |
+    */
+
     const toggleAttendance = (student: Student, date: string) => {
-        const key = `${student.id}-${date}`;
+        const key = `${selectedSubject}-${student.id}-${date}`;
+
+        if (
+            saving.current ||
+            gpsLocked.has(key) ||
+            !selectedSubject ||
+            date > today ||
+            calendar[selectedSubject]?.[date] === 'non_class'
+        ) {
+            return;
+        }
+
         const current = records[key];
 
         let nextStatus: AttendanceStatus | null = null;
 
         if (!current) {
             nextStatus = 'present_manual';
-        } else if (current === 'present_manual') {
+        } else if (current === 'present_manual' || current === 'present_gps') {
             nextStatus = 'late';
         } else if (current === 'late') {
             nextStatus = 'absent';
         } else if (current === 'absent') {
-            nextStatus = null;
-        } else if (current === 'present_gps') {
-            // Prevent manual modification of GPS attendance.
-            return;
+            nextStatus = 'present_manual';
         }
 
-        setRecords((previous) => {
-            const updated = { ...previous };
-
-            if (nextStatus === null) {
-                delete updated[key];
-            } else {
-                updated[key] = nextStatus;
-            }
-
-            return updated;
-        });
-
-        /**
-         * Uncomment this once the attendance.store route
-         * from the backend section below has been added.
-         */
-
-        /*
+        saving.current = true;
+        setSavingKey(key);
+        setSaveError('');
         router.post(
-            '/attendance/mark',
+            '/attendance',
             {
+                schedule_id: Number(selectedSubject),
                 student_id: student.id,
-                date,
-                status: nextStatus,
+                attendance_date: date,
+                status:
+                    nextStatus === 'present_manual' ? 'present' : nextStatus,
             },
             {
                 preserveScroll: true,
-                preserveState: true,
+                onError: (errors) =>
+                    setSaveError(
+                        Object.values(errors)[0] ??
+                            'Attendance could not be saved.',
+                    ),
+                onFinish: () => {
+                    saving.current = false;
+                    setSavingKey(null);
+                    router.reload({
+                        data: { sheet_start: startDate, sheet_weeks: weeks },
+                        only: ['attendance', 'calendar', 'today'],
+                    });
+                },
             },
         );
-        */
     };
+
+    /*
+    |--------------------------------------------------------------------------
+    | SETTINGS PRESETS
+    |--------------------------------------------------------------------------
+    */
 
     const applyPreset = (presetWeeks: number, presetDays: number) => {
         setWeeks(presetWeeks);
         setDaysPerWeek(presetDays);
     };
 
-    /**
-     * Excel-compatible CSV export.
-     */
+    /*
+    |--------------------------------------------------------------------------
+    | EXPORT CSV
+    |--------------------------------------------------------------------------
+    */
+
     const exportAttendance = () => {
         const headers = ['Student ID', 'Name', 'Year', 'Section'];
 
@@ -271,7 +430,7 @@ export default function Attendance({
         });
 
         const rows = filteredStudents.map((student) => {
-            const basic = [
+            const row: Array<string | number> = [
                 student.student_id,
                 student.name,
                 student.year,
@@ -281,25 +440,23 @@ export default function Attendance({
             generatedWeeks.forEach((week) => {
                 week.forEach((day) => {
                     const status =
-                        records[`${student.id}-${day.dateKey}`];
+                        records[
+                            `${selectedSubject}-${student.id}-${day.dateKey}`
+                        ];
 
-                    basic.push(attendanceText(status));
+                    row.push(
+                        calendar[selectedSubject]?.[day.dateKey] === 'non_class'
+                            ? 'Non-class day'
+                            : attendanceText(status),
+                    );
                 });
             });
 
-            return basic;
+            return row;
         });
 
         const csv = [headers, ...rows]
-            .map((row) =>
-                row
-                    .map((cell) => {
-                        const value = String(cell ?? '').replace(/"/g, '""');
-
-                        return `"${value}"`;
-                    })
-                    .join(','),
-            )
+            .map((row) => row.map(csvCell).join(','))
             .join('\n');
 
         const blob = new Blob([csv], {
@@ -314,7 +471,9 @@ export default function Attendance({
         link.download = 'attendance-sheet.csv';
 
         document.body.appendChild(link);
+
         link.click();
+
         document.body.removeChild(link);
 
         URL.revokeObjectURL(url);
@@ -322,27 +481,41 @@ export default function Attendance({
 
     return (
         <>
+            {saveError && (
+                <p role="alert" className="p-4 text-red-700">
+                    {saveError}
+                </p>
+            )}
             <Head title="Attendance Sheet" />
 
-            <div className="min-h-screen bg-[#f6f7f9] text-slate-900 [color-scheme:light]">
-                {/* Top GPS status */}
-                <div className="flex h-[54px] items-center justify-end border-b border-gray-200 bg-white px-8 shadow-sm">
-                    <div className="flex items-center gap-3 text-sm text-slate-600">
-                        <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+            <div className="min-h-full bg-[#f5f6f8] text-slate-900">
+                {/* =====================================================
+                    TOP GPS BAR
+                ====================================================== */}
 
+                <div className="sticky top-0 z-40 flex h-[58px] items-center justify-end border-b border-gray-200 bg-white px-7 shadow-sm">
+                    <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
+                        <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
                         GPS Tracking Active
                     </div>
                 </div>
 
-                <main className="p-7 lg:p-8">
-                    {/* Heading */}
-                    <div className="mb-7 flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+                {/* =====================================================
+                    MAIN CONTENT
+                ====================================================== */}
+
+                <main className="px-4 pt-4 pb-8 sm:px-6 lg:px-7">
+                    {/* =================================================
+                        PAGE HEADER
+                    ================================================== */}
+
+                    <div className="mb-5 flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
                         <div>
-                            <h1 className="text-3xl font-bold text-[#900027]">
+                            <h1 className="text-[29px] font-bold tracking-tight text-[#970027]">
                                 Attendance Sheet
                             </h1>
 
-                            <p className="mt-1 text-lg text-gray-800">
+                            <p className="mt-1 text-[17px] text-slate-700">
                                 Mark and track student attendance by week
                             </p>
                         </div>
@@ -351,85 +524,98 @@ export default function Attendance({
                             <button
                                 type="button"
                                 onClick={() =>
-                                    setShowSettings(!showSettings)
+                                    setShowSettings((current) => !current)
                                 }
-                                className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                                className="flex h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-gray-50"
                             >
-                                <Settings size={20} />
-
-                                {showSettings
-                                    ? 'Hide Settings'
-                                    : 'Show Settings'}
+                                <Settings size={18} />
+                                Settings
                             </button>
 
                             <button
                                 type="button"
                                 onClick={exportAttendance}
-                                className="flex items-center gap-2 rounded-xl bg-green-600 px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-green-700"
+                                className="flex h-11 items-center gap-2 rounded-xl bg-[#970027] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#7f001f]"
                             >
-                                <Download size={20} />
-
+                                <Download size={18} />
                                 Export to Excel
                             </button>
                         </div>
                     </div>
 
-                    {/* SETTINGS */}
-                    {showSettings && (
-                        <section className="mb-7 rounded-2xl border border-gray-200 bg-white p-7 shadow-sm">
-                            <div className="mb-6 flex items-center gap-3">
-                                <Settings size={24} />
+                    {/* =================================================
+                        SETTINGS PANEL
+                    ================================================== */}
 
-                                <h2 className="text-xl font-bold text-slate-900">
-                                    Sheet Configuration
-                                </h2>
+                    {showSettings && (
+                        <section className="mb-5 rounded-[18px] border border-gray-200 bg-white p-5 shadow-sm">
+                            <div className="mb-5 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <Settings
+                                        size={21}
+                                        className="text-[#970027]"
+                                    />
+
+                                    <div>
+                                        <h2 className="font-bold text-slate-900">
+                                            Sheet Configuration
+                                        </h2>
+
+                                        <p className="text-sm text-slate-500">
+                                            Configure attendance weeks and class
+                                            days.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setShowSettings(false)}
+                                    className="rounded-lg p-2 text-slate-400 hover:bg-gray-100"
+                                >
+                                    <X size={20} />
+                                </button>
                             </div>
 
-                            <div className="grid gap-6 lg:grid-cols-3">
-                                {/* Number of weeks */}
+                            <div className="grid gap-5 md:grid-cols-3">
                                 <div>
-                                    <label className="mb-2 block font-medium text-slate-700">
+                                    <label className="mb-2 block text-sm font-semibold text-slate-700">
                                         Number of Weeks
                                     </label>
 
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex h-11 items-center overflow-hidden rounded-xl border border-gray-200">
                                         <button
                                             type="button"
                                             onClick={() =>
-                                                setWeeks((current) =>
-                                                    Math.max(1, current - 1),
+                                                setWeeks((value) =>
+                                                    Math.max(1, value - 1),
                                                 )
                                             }
-                                            className="flex h-11 w-11 items-center justify-center rounded-xl bg-gray-100 text-slate-600 transition hover:bg-gray-200"
+                                            className="flex h-full w-12 items-center justify-center bg-gray-50 hover:bg-gray-100"
                                         >
-                                            <Minus size={20} />
+                                            <Minus size={18} />
                                         </button>
 
-                                        <div className="flex h-12 flex-1 items-center justify-center rounded-xl border border-gray-300 bg-white text-lg text-slate-900">
+                                        <div className="flex flex-1 items-center justify-center font-semibold">
                                             {weeks}
                                         </div>
 
                                         <button
                                             type="button"
                                             onClick={() =>
-                                                setWeeks((current) =>
-                                                    Math.min(12, current + 1),
+                                                setWeeks((value) =>
+                                                    Math.min(12, value + 1),
                                                 )
                                             }
-                                            className="flex h-11 w-11 items-center justify-center rounded-xl bg-gray-100 text-slate-600 transition hover:bg-gray-200"
+                                            className="flex h-full w-12 items-center justify-center bg-gray-50 text-xl hover:bg-gray-100"
                                         >
-                                            <Plus size={20} />
+                                            +
                                         </button>
                                     </div>
-
-                                    <p className="mt-2 text-sm text-slate-500">
-                                        Max: 12 weeks
-                                    </p>
                                 </div>
 
-                                {/* Days per week */}
                                 <div>
-                                    <label className="mb-2 block font-medium text-slate-700">
+                                    <label className="mb-2 block text-sm font-semibold text-slate-700">
                                         Days Per Week
                                     </label>
 
@@ -440,26 +626,24 @@ export default function Attendance({
                                                 Number(event.target.value),
                                             )
                                         }
-                                        className="h-12 w-full rounded-xl border border-gray-300 bg-white px-4 text-base text-slate-900 outline-none [color-scheme:light] focus:border-blue-500"
+                                        className="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 outline-none focus:border-[#970027]"
                                     >
                                         <option value={5}>
-                                            5 days (Mon-Fri)
+                                            5 Days - Mon to Fri
                                         </option>
 
                                         <option value={6}>
-                                            6 days (Mon-Sat)
+                                            6 Days - Mon to Sat
+                                        </option>
+
+                                        <option value={7}>
+                                            7 Days - Mon to Sun
                                         </option>
                                     </select>
-
-                                    <p className="mt-2 text-sm text-slate-500">
-                                        Current:{' '}
-                                        {DAYS.slice(0, daysPerWeek).join(', ')}
-                                    </p>
                                 </div>
 
-                                {/* Start date */}
                                 <div>
-                                    <label className="mb-2 block font-medium text-slate-700">
+                                    <label className="mb-2 block text-sm font-semibold text-slate-700">
                                         Start Date
                                     </label>
 
@@ -469,79 +653,91 @@ export default function Attendance({
                                         onChange={(event) =>
                                             setStartDate(event.target.value)
                                         }
-                                        className="h-12 w-full rounded-xl border border-gray-300 bg-white px-4 text-base text-slate-900 outline-none [color-scheme:light] focus:border-blue-500"
+                                        className="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 outline-none focus:border-[#970027]"
                                     />
-
-                                    <p className="mt-2 text-sm text-slate-500">
-                                        First Monday of the sheet
-                                    </p>
                                 </div>
                             </div>
 
-                            <div className="my-7 border-t border-gray-200" />
+                            <div className="mt-5 border-t border-gray-100 pt-4">
+                                <p className="mb-3 text-sm font-semibold text-slate-700">
+                                    Quick Presets
+                                </p>
 
-                            <p className="mb-3 font-medium text-slate-700">
-                                Quick Presets:
-                            </p>
+                                <div className="flex flex-wrap gap-2">
+                                    <PresetButton
+                                        text="4w × 5d"
+                                        onClick={() => applyPreset(4, 5)}
+                                    />
 
-                            <div className="flex flex-wrap gap-3">
-                                <PresetButton
-                                    text="4 Weeks, 5 Days"
-                                    onClick={() => applyPreset(4, 5)}
-                                />
+                                    <PresetButton
+                                        text="4w × 6d"
+                                        onClick={() => applyPreset(4, 6)}
+                                    />
 
-                                <PresetButton
-                                    text="4 Weeks, 6 Days"
-                                    onClick={() => applyPreset(4, 6)}
-                                />
+                                    <PresetButton
+                                        text="8w × 6d"
+                                        onClick={() => applyPreset(8, 6)}
+                                    />
 
-                                <PresetButton
-                                    text="8 Weeks, 5 Days"
-                                    onClick={() => applyPreset(8, 5)}
-                                />
-
-                                <PresetButton
-                                    text="12 Weeks, 6 Days (Full Semester)"
-                                    onClick={() => applyPreset(12, 6)}
-                                />
+                                    <PresetButton
+                                        text="12w × 6d"
+                                        onClick={() => applyPreset(12, 6)}
+                                    />
+                                </div>
                             </div>
                         </section>
                     )}
 
-                    {/* FILTER */}
-                    <section className="mb-7 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                        <div className="flex flex-wrap items-center gap-4">
-                            <div className="flex items-center gap-2 font-medium text-slate-600">
-                                <Filter size={22} className="text-slate-400" />
+                    {/* =================================================
+                        FILTER CARD
+                    ================================================== */}
 
-                                Filters:
+                    <section className="mb-5 rounded-[20px] border border-gray-200 bg-white px-5 py-3 shadow-sm">
+                        <div className="flex flex-wrap items-center gap-3">
+                            <div className="flex items-center gap-3 text-sm font-medium text-gray-500">
+                                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#fff2f5]">
+                                    <Filter
+                                        size={19}
+                                        className="text-[#970027]"
+                                    />
+                                </span>
+
+                                <span className="uppercase">Filters</span>
                             </div>
+
+                            {/* SUBJECT */}
 
                             <select
                                 value={selectedSubject}
                                 onChange={(event) =>
                                     setSelectedSubject(event.target.value)
                                 }
-                                className="h-12 min-w-[240px] rounded-xl border border-gray-300 bg-white px-4 text-slate-900 [color-scheme:light]"
+                                className="h-12 w-full min-w-0 flex-1 rounded-[16px] border border-gray-200 bg-[#fafafa] px-4 text-[16px] text-slate-900 transition outline-none focus:border-[#c98796] focus:ring-2 focus:ring-[#970027]/15 sm:min-w-[250px] lg:max-w-[350px]"
                             >
-                                <option value="">All Classes</option>
+                                {subjects.length === 0 && (
+                                    <option value="">All Classes</option>
+                                )}
 
                                 {subjects.map((subject) => (
                                     <option
                                         key={subject.id}
-                                        value={subject.id}
+                                        value={String(subject.id)}
                                     >
                                         {subject.name}
                                     </option>
                                 ))}
                             </select>
 
+                            {/* YEAR */}
+
                             <select
                                 value={selectedYear}
-                                onChange={(event) =>
-                                    setSelectedYear(event.target.value)
-                                }
-                                className="h-12 min-w-[150px] rounded-xl border border-gray-300 bg-white px-4 text-slate-900 [color-scheme:light]"
+                                onChange={(event) => {
+                                    setSelectedYear(event.target.value);
+
+                                    setSelectedSection('');
+                                }}
+                                className="sm:min-w-[150px]-[16px] h-12 w-full min-w-0 rounded border border-gray-200 bg-[#fafafa] px-4 text-[16px] text-slate-900 transition outline-none focus:border-[#c98796] focus:ring-2 focus:ring-[#970027]/15 sm:w-auto"
                             >
                                 <option value="">All Years</option>
 
@@ -552,27 +748,31 @@ export default function Attendance({
                                 ))}
                             </select>
 
+                            {/* SECTION */}
+
                             <select
                                 value={selectedSection}
                                 onChange={(event) =>
                                     setSelectedSection(event.target.value)
                                 }
-                                className="h-12 min-w-[180px] rounded-xl border border-gray-300 bg-white px-4 text-slate-900 [color-scheme:light]"
+                                className="sm:min-w-[150px]-[16px] h-12 w-full min-w-0 rounded border border-gray-200 bg-[#fafafa] px-4 text-[16px] text-slate-900 transition outline-none focus:border-[#c98796] focus:ring-2 focus:ring-[#970027]/15 sm:w-auto"
                             >
                                 <option value="">All Sections</option>
 
                                 {sections.map((section) => (
-                                    <option
-                                        key={section}
-                                        value={section}
-                                    >
+                                    <option key={section} value={section}>
                                         {section}
                                     </option>
                                 ))}
                             </select>
 
-                            <div className="ml-auto flex items-center gap-3 text-slate-600">
-                                <CalendarDays size={20} />
+                            {/* DATE INFO */}
+
+                            <div className="ml-auto flex items-center gap-3 text-sm whitespace-nowrap text-gray-500">
+                                <CalendarDays
+                                    size={18}
+                                    className="text-[#970027]"
+                                />
 
                                 <span>
                                     {normalizedStartDate.toLocaleString(
@@ -584,46 +784,60 @@ export default function Attendance({
                                     )}
                                 </span>
 
-                                <span className="rounded-full bg-blue-100 px-4 py-2 font-medium text-blue-700">
-                                    {weeks} Weeks × {daysPerWeek} Days
+                                <span className="rounded-full border border-[#efbec8] bg-[#fff6f8] px-3 py-1.5 font-semibold text-[#970027]">
+                                    {weeks}w × {daysPerWeek}d
                                 </span>
                             </div>
                         </div>
                     </section>
 
-                    {/* LEGEND */}
-                    <section className="mb-7 rounded-2xl border border-gray-200 bg-white px-5 py-5 shadow-sm">
-                        <div className="flex flex-wrap items-center gap-x-10 gap-y-3">
-                            <Legend
-                                type="present"
-                                text="Present (GPS Auto-recorded)"
-                            />
+                    {/* =================================================
+                        LEGEND
+                    ================================================== */}
 
-                            <Legend
-                                type="manual"
-                                text="Present (Manual)"
-                            />
+                    <section className="mb-6 rounded-[20px] border border-gray-200 bg-white px-6 py-4 shadow-sm">
+                        <div className="flex flex-wrap items-center gap-x-7 gap-y-3">
+                            <span className="text-sm font-medium text-gray-400 uppercase">
+                                Legend
+                            </span>
 
-                            <Legend
-                                type="late"
-                                text="Late"
-                            />
+                            <Legend type="gps" text="Present (GPS)" />
 
-                            <Legend
-                                type="absent"
-                                text="Absent"
-                            />
+                            <Legend type="manual" text="Present (Manual)" />
+
+                            <Legend type="late" text="Late" />
+
+                            <Legend type="absent" text="Absent" />
+
+                            <div className="ml-auto flex items-center gap-2 text-sm text-gray-400">
+                                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100">
+                                    <Minus size={13} />
+                                </span>
+                                Non-class day
+                            </div>
                         </div>
                     </section>
 
-                    {/* ATTENDANCE TABLE */}
-                    <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                    {/* =================================================
+                        ATTENDANCE TABLE
+                    ================================================== */}
+
+                    <section className="overflow-hidden rounded-[20px] border border-gray-200 bg-white shadow-sm">
                         <div className="overflow-x-auto">
-                            <table className="min-w-max border-collapse text-slate-900">
+                            <table className="w-max min-w-full border-collapse">
                                 <thead>
-                                    <tr className="bg-[#ffc400] text-slate-950">
-                                        <th className="sticky left-0 z-30 min-w-[250px] border-r-2 border-black bg-[#ffc400] px-5 py-4 text-left text-xl">
-                                            Name
+                                    {/* WEEK ROW */}
+
+                                    <tr className="bg-[#970027] text-white">
+                                        <th className="sticky left-0 z-30 w-[330px] min-w-[330px] border-r border-white/15 bg-[#970027] px-5 py-4 text-left">
+                                            <div className="text-[16px] font-bold">
+                                                Student
+                                            </div>
+
+                                            <div className="mt-1 text-[12px] font-normal text-white/70">
+                                                {activeSubject?.name ??
+                                                    'All Classes'}
+                                            </div>
                                         </th>
 
                                         {generatedWeeks.map(
@@ -631,7 +845,7 @@ export default function Attendance({
                                                 <th
                                                     key={weekIndex}
                                                     colSpan={week.length}
-                                                    className="border-r-2 border-black px-5 py-4 text-center text-xl font-bold last:border-r-0"
+                                                    className="border-r border-white/10 px-3 py-4 text-center text-[14px] font-bold last:border-r-0"
                                                 >
                                                     Week {weekIndex + 1}
                                                 </th>
@@ -639,8 +853,10 @@ export default function Attendance({
                                         )}
                                     </tr>
 
-                                    <tr className="bg-[#ffe01b] text-slate-950">
-                                        <th className="sticky left-0 z-30 border-r-2 border-black bg-[#ffe01b] px-5 py-3 text-left text-base">
+                                    {/* DAY ROW */}
+
+                                    <tr className="bg-[#89001f] text-white">
+                                        <th className="sticky left-0 z-30 min-w-[330px] border-r border-white/10 bg-[#89001f] px-5 py-3 text-left text-[12px] font-semibold text-white/75 uppercase">
                                             Student ID
                                         </th>
 
@@ -649,16 +865,14 @@ export default function Attendance({
                                                 week.map((day) => (
                                                     <th
                                                         key={`${weekIndex}-${day.dateKey}`}
-                                                        className="min-w-[52px] border-r border-gray-300 px-2 py-2 text-center"
+                                                        className="h-[55px] min-w-[58px] border-r border-white/10 px-2 text-center"
                                                     >
-                                                        <div className="text-sm font-bold">
+                                                        <div className="text-[12px] font-semibold">
                                                             {day.day}
                                                         </div>
 
-                                                        <div className="text-xs font-medium text-slate-600">
-                                                            {
-                                                                day.displayDate
-                                                            }
+                                                        <div className="text-[11px] font-medium text-white/55">
+                                                            {day.displayDate}
                                                         </div>
                                                     </th>
                                                 )),
@@ -673,67 +887,125 @@ export default function Attendance({
                                                 colSpan={
                                                     weeks * daysPerWeek + 1
                                                 }
-                                                className="bg-white px-6 py-14 text-center text-slate-600"
+                                                className="px-6 py-16 text-center"
                                             >
-                                                <div className="text-lg font-medium">
-                                                    No students found.
+                                                <div className="text-lg font-semibold text-slate-700">
+                                                    No students found
                                                 </div>
 
-                                                <p className="mt-1 text-sm">
-                                                    Students assigned to this
-                                                    class will appear here.
+                                                <p className="mt-1 text-sm text-slate-500">
+                                                    No students match the
+                                                    selected filters.
                                                 </p>
                                             </td>
                                         </tr>
                                     ) : (
                                         filteredStudents.map((student) => (
                                             <tr
-                                                key={student.id}
-                                                className="border-b border-gray-300 last:border-b-0"
+                                                key={`${student.subject_id}-${student.id}`}
+                                                className="border-b border-gray-100 last:border-b-0"
                                             >
-                                                <td className="sticky left-0 z-20 border-r-2 border-black bg-white px-5 py-4">
-                                                    <div className="text-lg font-medium text-black">
-                                                        {student.name}
-                                                    </div>
+                                                {/* STUDENT */}
 
-                                                    <div className="text-sm text-slate-600">
-                                                        {student.student_id}
-                                                    </div>
+                                                <td className="sticky left-0 z-20 min-w-[330px] border-r border-gray-200 bg-white px-5 py-[17px]">
+                                                    <div className="flex items-start gap-4">
+                                                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#fff3f5] text-sm font-bold text-[#970027]">
+                                                            {student.name
+                                                                .charAt(0)
+                                                                .toUpperCase()}
+                                                        </div>
 
-                                                    <div className="mt-2 flex gap-2">
-                                                        <span className="rounded-md bg-gray-100 px-2 py-1 text-xs text-slate-600">
-                                                            {student.year}
-                                                        </span>
+                                                        <div className="min-w-0">
+                                                            <div className="truncate text-[16px] font-semibold text-black">
+                                                                {student.name}
+                                                            </div>
 
-                                                        <span className="rounded-md bg-gray-100 px-2 py-1 text-xs text-slate-600">
-                                                            {student.section}
-                                                        </span>
+                                                            <div className="mt-0.5 text-[11px] text-gray-400 italic">
+                                                                {
+                                                                    student.student_id
+                                                                }
+                                                            </div>
+
+                                                            <div className="mt-2 flex gap-2">
+                                                                <span className="rounded bg-gray-100 px-2 py-1 text-[10px] text-gray-500">
+                                                                    {
+                                                                        student.year
+                                                                    }
+                                                                </span>
+
+                                                                <span className="rounded bg-[#fff2f5] px-2 py-1 text-[10px] font-medium text-[#970027]">
+                                                                    {
+                                                                        student.section
+                                                                    }
+                                                                </span>
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </td>
+
+                                                {/* ATTENDANCE DAYS */}
 
                                                 {generatedWeeks.flatMap(
                                                     (week) =>
                                                         week.map((day) => {
-                                                            const key = `${student.id}-${day.dateKey}`;
+                                                            const key = `${selectedSubject}-${student.id}-${day.dateKey}`;
+
                                                             const status =
                                                                 records[key];
 
                                                             return (
                                                                 <td
                                                                     key={key}
-                                                                    onClick={() =>
-                                                                        toggleAttendance(
-                                                                            student,
-                                                                            day.dateKey,
-                                                                        )
-                                                                    }
-                                                                    className="h-[90px] min-w-[52px] cursor-pointer border-r border-gray-300 bg-[#f6f7f9] text-center transition hover:bg-blue-50"
+                                                                    className="h-[104px] min-w-[58px] border-r border-gray-100 bg-[#fcfcfd] px-1 text-center"
                                                                 >
-                                                                    <AttendanceIcon
-                                                                        status={
-                                                                            status
+                                                                    <button
+                                                                        disabled={
+                                                                            gpsLocked.has(
+                                                                                key,
+                                                                            ) ||
+                                                                            savingKey !==
+                                                                                null ||
+                                                                            day.dateKey >
+                                                                                today ||
+                                                                            calendar[
+                                                                                selectedSubject
+                                                                            ]?.[
+                                                                                day
+                                                                                    .dateKey
+                                                                            ] ===
+                                                                                'non_class'
                                                                         }
-                                                                    />
+                                                                        type="button"
+                                                                        onClick={() =>
+                                                                            toggleAttendance(
+                                                                                student,
+                                                                                day.dateKey,
+                                                                            )
+                                                                        }
+                                                                        title={
+                                                                            gpsLocked.has(
+                                                                                key,
+                                                                            )
+                                                                                ? 'GPS attendance is protected'
+                                                                                : 'Click to change attendance'
+                                                                        }
+                                                                        className="group mx-auto flex h-full w-full items-center justify-center transition hover:bg-[#fff7f9]"
+                                                                    >
+                                                                        <AttendanceCell
+                                                                            nonClass={
+                                                                                calendar[
+                                                                                    selectedSubject
+                                                                                ]?.[
+                                                                                    day
+                                                                                        .dateKey
+                                                                                ] ===
+                                                                                'non_class'
+                                                                            }
+                                                                            status={
+                                                                                status
+                                                                            }
+                                                                        />
+                                                                    </button>
                                                                 </td>
                                                             );
                                                         }),
@@ -746,37 +1018,34 @@ export default function Attendance({
                         </div>
                     </section>
 
-                    {/* SUMMARY */}
-                    <section className="mt-7 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                        <h2 className="mb-6 text-xl font-bold text-slate-900">
-                            Attendance Summary
-                        </h2>
+                    {/* =================================================
+                        SUMMARY
+                    ================================================== */}
 
-                        <div className="grid grid-cols-2 gap-6 text-center md:grid-cols-4">
-                            <SummaryItem
-                                value={summary.present}
-                                label="Present"
-                                valueClass="text-green-600"
-                            />
+                    <section className="mt-6 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+                        <SummaryCard
+                            value={summary.present}
+                            label="Present"
+                            type="present"
+                        />
 
-                            <SummaryItem
-                                value={summary.late}
-                                label="Late"
-                                valueClass="text-amber-600"
-                            />
+                        <SummaryCard
+                            value={summary.late}
+                            label="Late"
+                            type="late"
+                        />
 
-                            <SummaryItem
-                                value={summary.absent}
-                                label="Absent"
-                                valueClass="text-red-600"
-                            />
+                        <SummaryCard
+                            value={summary.absent}
+                            label="Absent"
+                            type="absent"
+                        />
 
-                            <SummaryItem
-                                value={summary.gps}
-                                label="GPS Auto-recorded"
-                                valueClass="text-blue-600"
-                            />
-                        </div>
+                        <SummaryCard
+                            value={summary.gps}
+                            label="GPS Recorded"
+                            type="gps"
+                        />
                     </section>
                 </main>
             </div>
@@ -784,9 +1053,11 @@ export default function Attendance({
     );
 }
 
-/* -------------------------------------
-   SMALL COMPONENTS
--------------------------------------- */
+/*
+|--------------------------------------------------------------------------
+| PRESET BUTTON
+|--------------------------------------------------------------------------
+*/
 
 function PresetButton({
     text,
@@ -799,48 +1070,50 @@ function PresetButton({
         <button
             type="button"
             onClick={onClick}
-            className="rounded-xl bg-gray-100 px-5 py-3 font-medium text-slate-600 transition hover:bg-gray-200"
+            className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-[#970027]/30 hover:bg-[#fff4f6] hover:text-[#970027]"
         >
             {text}
         </button>
     );
 }
 
+/*
+|--------------------------------------------------------------------------
+| LEGEND
+|--------------------------------------------------------------------------
+*/
+
 function Legend({
     type,
     text,
 }: {
-    type: 'present' | 'manual' | 'late' | 'absent';
+    type: 'gps' | 'manual' | 'late' | 'absent';
     text: string;
 }) {
     return (
-        <div className="flex items-center gap-2 text-slate-600">
-            {type === 'present' && (
+        <div className="flex items-center gap-2 text-[13px] text-gray-500">
+            {type === 'gps' && (
                 <CheckCircle2
-                    size={25}
-                    className="text-green-600"
-                />
-            )}
-
-            {type === 'manual' && (
-                <CheckCircle2
-                    size={25}
+                    size={18}
+                    strokeWidth={2}
                     className="text-emerald-500"
                 />
             )}
 
-            {type === 'late' && (
-                <Clock3
-                    size={25}
-                    className="text-amber-500"
+            {type === 'manual' && (
+                <Check
+                    size={18}
+                    strokeWidth={2.5}
+                    className="text-emerald-400"
                 />
             )}
 
+            {type === 'late' && (
+                <Clock3 size={18} strokeWidth={2} className="text-amber-500" />
+            )}
+
             {type === 'absent' && (
-                <XCircle
-                    size={25}
-                    className="text-red-500"
-                />
+                <XCircle size={18} strokeWidth={2} className="text-red-500" />
             )}
 
             <span>{text}</span>
@@ -848,71 +1121,145 @@ function Legend({
     );
 }
 
-function AttendanceIcon({
+/*
+|--------------------------------------------------------------------------
+| ATTENDANCE CELL
+|--------------------------------------------------------------------------
+*/
+
+function AttendanceCell({
     status,
+    nonClass,
 }: {
     status?: AttendanceStatus;
+    nonClass?: boolean;
 }) {
+    if (nonClass) {
+        return (
+            <div
+                title="Non-class day"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-xs text-gray-300"
+            >
+                ·
+            </div>
+        );
+    }
+
     if (status === 'present_gps') {
         return (
-            <CheckCircle2
-                size={29}
-                className="mx-auto text-green-600"
-            />
+            <div className="h-40px w-40px relative flex h-10 w-10 items-center justify-center rounded-[15px] border border-emerald-200 bg-emerald-50 text-[13px] font-bold text-emerald-700">
+                P
+                <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-[#970027]" />
+            </div>
         );
     }
 
     if (status === 'present_manual') {
         return (
-            <CheckCircle2
-                size={29}
-                className="mx-auto text-emerald-500"
-            />
+            <div className="flex h-10 w-10 items-center justify-center rounded-[15px] border border-emerald-200 bg-emerald-50 text-[13px] font-bold text-emerald-700">
+                P
+            </div>
         );
     }
 
     if (status === 'late') {
         return (
-            <Clock3
-                size={29}
-                className="mx-auto text-amber-500"
-            />
+            <div className="flex h-10 w-10 items-center justify-center rounded-[15px] border border-amber-200 bg-amber-50 text-[13px] font-bold text-amber-700">
+                L
+            </div>
         );
     }
 
     if (status === 'absent') {
         return (
-            <XCircle
-                size={29}
-                className="mx-auto text-red-500"
-            />
+            <div className="flex h-10 w-10 items-center justify-center rounded-[15px] border border-red-200 bg-red-50 text-[13px] font-bold text-red-600">
+                A
+            </div>
         );
     }
 
-    return <span className="text-gray-400">-</span>;
+    return (
+        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-xs text-gray-300">
+            -
+        </div>
+    );
 }
 
-function SummaryItem({
+/*
+|--------------------------------------------------------------------------
+| SUMMARY CARD
+|--------------------------------------------------------------------------
+*/
+
+function SummaryCard({
     value,
     label,
-    valueClass,
+    type,
 }: {
     value: number;
     label: string;
-    valueClass: string;
+    type: 'present' | 'late' | 'absent' | 'gps';
 }) {
+    const renderIcon = () => {
+        if (type === 'present') {
+            return <CheckCircle2 size={24} className="text-emerald-500" />;
+        }
+
+        if (type === 'late') {
+            return <Clock3 size={24} className="text-amber-500" />;
+        }
+
+        if (type === 'absent') {
+            return <XCircle size={24} className="text-red-500" />;
+        }
+
+        return <Wifi size={24} className="text-[#970027]" />;
+    };
+
+    const iconStyle =
+        type === 'present'
+            ? 'border-emerald-200 bg-emerald-50'
+            : type === 'late'
+              ? 'border-amber-200 bg-amber-50'
+              : type === 'absent'
+                ? 'border-red-200 bg-red-50'
+                : 'border-[#edc1cb] bg-[#fff3f6]';
+
+    const valueStyle =
+        type === 'present'
+            ? 'text-emerald-700'
+            : type === 'late'
+              ? 'text-amber-700'
+              : type === 'absent'
+                ? 'text-red-600'
+                : 'text-[#970027]';
+
     return (
-        <div>
-            <div className={`text-3xl font-bold ${valueClass}`}>
-                {value}
+        <div className="flex min-h-[112px] items-center gap-5 rounded-[18px] border border-gray-200 bg-white px-6 shadow-sm">
+            <div
+                className={`flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-[15px] border ${iconStyle}`}
+            >
+                {renderIcon()}
             </div>
 
-            <div className="mt-2 text-slate-600">
-                {label}
+            <div>
+                <div
+                    className={`text-[30px] leading-none font-bold ${valueStyle}`}
+                >
+                    {value}
+                </div>
+
+                <div className="mt-2 text-sm text-gray-500">{label}</div>
             </div>
         </div>
     );
 }
+
+/*
+|--------------------------------------------------------------------------
+| ATTENDANCE TEXT FOR EXPORT
+|--------------------------------------------------------------------------
+*/
 
 function attendanceText(status?: AttendanceStatus) {
     switch (status) {
@@ -933,9 +1280,17 @@ function attendanceText(status?: AttendanceStatus) {
     }
 }
 
+/*
+|--------------------------------------------------------------------------
+| FORMAT DATE
+|--------------------------------------------------------------------------
+*/
+
 function formatDateKey(date: Date) {
     const year = date.getFullYear();
+
     const month = String(date.getMonth() + 1).padStart(2, '0');
+
     const day = String(date.getDate()).padStart(2, '0');
 
     return `${year}-${month}-${day}`;

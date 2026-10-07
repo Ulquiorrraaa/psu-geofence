@@ -1,76 +1,208 @@
 import { Head, Link, usePage } from '@inertiajs/react';
-import { Pencil, UserRound } from 'lucide-react';
+import {
+    GraduationCap,
+    Mail,
+    Pencil,
+    School,
+    UserRound,
+    UsersRound,
+} from 'lucide-react';
+import ProfileAvatar from '@/components/profile-avatar';
 
 type Student = {
-    name: string;
-    email: string;
-    year: string | null;
-    section: string | null;
-    adviser: string | null;
+    name?: string | null;
+    profile_picture_url?: string | null;
+    email?: string | null;
+    course?: string | null;
+    year?: string | null;
+    section?: string | null;
+    adviser?: string | null;
+    student_id?: string | number | null;
 };
 
-type PageProps = { student: Student };
+type PageProps = {
+    student?: Student | null;
+};
 
 export default function StudentProfile() {
     const { student } = usePage().props as unknown as PageProps;
-    const fields = [
-        ['Name', student.name],
-        ['Email', student.email],
-        ['Year', student.year || 'Not set'],
-        ['Section', student.section || 'Not set'],
-        ['Adviser', student.adviser || 'Not assigned'],
+
+    const studentName = student?.name?.trim() || 'Student';
+
+    const courseSection = [student?.course, student?.section]
+        .filter(Boolean)
+        .join(' ');
+
+    const profileFields = [
+        {
+            label: 'Full Name',
+            value: student?.name || 'Not set',
+            icon: UserRound,
+        },
+        {
+            label: 'Student ID',
+            value: student?.student_id || 'Not set',
+            icon: GraduationCap,
+        },
+        {
+            label: 'Email Address',
+            value: student?.email || 'Not set',
+            icon: Mail,
+        },
+        {
+            label: 'Course',
+            value: student?.course || 'Not set',
+            icon: School,
+        },
+        {
+            label: 'Year Level',
+            value: student?.year || 'Not set',
+            icon: GraduationCap,
+        },
+        {
+            label: 'Section',
+            value: student?.section || 'Not set',
+            icon: UsersRound,
+        },
+        {
+            label: 'Adviser',
+            value: student?.adviser || 'Not assigned',
+            icon: UserRound,
+        },
     ];
 
     return (
         <>
             <Head title="My Profile" />
-            <div className="min-h-screen px-4 py-6 sm:px-7 sm:py-8">
-                <div className="mx-auto max-w-3xl">
-                    <header className="mb-8 flex items-center justify-between gap-4">
-                        <div>
-                            <h1 className="text-3xl font-bold text-[#850027]">
+
+            {/*
+                IMPORTANT:
+                Do NOT add StudentLayout or StudentSidebar here.
+
+                Your sidebar should already come from your existing
+                student layout.
+
+                This file only renders the PROFILE PAGE CONTENT.
+            */}
+
+            <div className="min-h-full w-full overflow-x-hidden bg-[#f7f8fa]">
+                <main className="w-full px-3 py-4 sm:px-5 sm:py-6 lg:px-7 lg:py-8 xl:px-8">
+                    {/* PAGE HEADER */}
+                    <header className="mb-5 flex flex-col gap-4 sm:mb-7 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                            <h1 className="text-2xl leading-tight font-bold text-[#850027] sm:text-3xl">
                                 My Profile
                             </h1>
-                            <p className="mt-1 text-gray-600">
-                                Your student account information
+
+                            <p className="mt-1 text-sm text-gray-600 sm:text-base">
+                                View and manage your student account information
                             </p>
                         </div>
+
                         <Link
-                            href="/settings/profile"
-                            className="inline-flex min-h-10 items-center gap-2 rounded-md bg-[#850027] px-4 text-sm font-semibold text-white hover:bg-[#65001d]"
+                            href="/student/profile/edit"
+                            className="inline-flex min-h-10 w-fit shrink-0 items-center justify-center gap-2 rounded-xl bg-[#850027] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#6d001f] focus:ring-2 focus:ring-[#850027]/30 focus:outline-none"
                         >
-                            <Pencil size={16} /> Edit profile
+                            <Pencil size={16} />
+                            Edit Profile
                         </Link>
                     </header>
-                    <section className="border-y border-gray-200 bg-white">
-                        <div className="flex items-center gap-4 border-b border-gray-100 px-5 py-6">
-                            <div className="flex size-12 items-center justify-center rounded-full bg-pink-100 text-[#850027]">
-                                <UserRound size={23} />
+
+                    <div className="space-y-5">
+                        {/* STUDENT PROFILE CARD */}
+                        <section className="flex min-w-0 flex-col gap-4 rounded-2xl bg-[#fff4f6] p-4 shadow-sm sm:flex-row sm:items-center sm:gap-5 sm:rounded-3xl sm:p-5 lg:p-6">
+                            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#f7dce4] text-[#850027] sm:h-20 sm:w-20">
+                                <ProfileAvatar
+                                    name={studentName}
+                                    url={student?.profile_picture_url}
+                                    className="size-16 sm:size-20"
+                                />
                             </div>
-                            <div>
-                                <h2 className="font-bold text-gray-950">
-                                    {student.name}
+
+                            <div className="min-w-0 flex-1">
+                                <p className="text-[11px] font-semibold tracking-wider text-gray-500 uppercase sm:text-xs">
+                                    Student Profile
+                                </p>
+
+                                <h2 className="mt-1 text-xl font-bold break-words text-gray-950 sm:text-2xl">
+                                    {studentName}
                                 </h2>
-                                <p className="text-sm text-gray-600">Student</p>
+
+                                {student ? (
+                                    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-600">
+                                        {courseSection && (
+                                            <span>{courseSection}</span>
+                                        )}
+
+                                        {courseSection &&
+                                            student.student_id && (
+                                                <span className="text-gray-400">
+                                                    •
+                                                </span>
+                                            )}
+
+                                        {student.student_id && (
+                                            <span>{student.student_id}</span>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <p className="mt-2 text-sm text-gray-500">
+                                        Student information unavailable
+                                    </p>
+                                )}
                             </div>
-                        </div>
-                        <dl className="divide-y divide-gray-100 px-5">
-                            {fields.map(([label, value]) => (
-                                <div
-                                    key={label}
-                                    className="grid gap-1 py-4 sm:grid-cols-[150px_1fr] sm:gap-4"
-                                >
-                                    <dt className="text-sm text-gray-500">
-                                        {label}
-                                    </dt>
-                                    <dd className="text-sm font-medium break-words text-gray-950">
-                                        {value}
-                                    </dd>
-                                </div>
-                            ))}
-                        </dl>
-                    </section>
-                </div>
+                        </section>
+
+                        {/* PERSONAL INFORMATION */}
+                        <section className="overflow-hidden rounded-[22px] border border-gray-200 bg-white shadow-sm">
+                            <div className="border-b border-gray-100 px-4 py-4 sm:px-6 sm:py-5">
+                                <h2 className="text-base font-bold text-gray-950 sm:text-lg">
+                                    Personal Information
+                                </h2>
+
+                                <p className="mt-1 text-xs text-gray-500 sm:text-sm">
+                                    Your account and student details
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-1 divide-y divide-gray-100 md:grid-cols-2 md:divide-y-0">
+                                {profileFields.map(
+                                    ({ label, value, icon: Icon }, index) => (
+                                        <div
+                                            key={label}
+                                            className={[
+                                                'flex min-w-0 items-start gap-3 px-4 py-4 sm:gap-4 sm:px-6 sm:py-5',
+                                                'border-gray-100',
+
+                                                index % 2 === 0
+                                                    ? 'md:border-r'
+                                                    : '',
+
+                                                index < profileFields.length - 2
+                                                    ? 'md:border-b'
+                                                    : '',
+                                            ].join(' ')}
+                                        >
+                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#fff0f4] text-[#850027]">
+                                                <Icon size={19} />
+                                            </div>
+
+                                            <div className="min-w-0">
+                                                <p className="text-xs font-medium tracking-wide text-gray-500 uppercase">
+                                                    {label}
+                                                </p>
+
+                                                <p className="mt-1 text-sm font-semibold break-words text-gray-950 sm:text-base">
+                                                    {String(value)}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ),
+                                )}
+                            </div>
+                        </section>
+                    </div>
+                </main>
             </div>
         </>
     );

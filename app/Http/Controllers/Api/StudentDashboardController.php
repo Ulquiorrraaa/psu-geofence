@@ -3,8 +3,6 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Schedule;
-use App\Models\Attendance;
 use Illuminate\Http\Request;
 
 class StudentDashboardController extends Controller
@@ -12,33 +10,29 @@ class StudentDashboardController extends Controller
     public function index(Request $request)
     {
         $student = $request->user();
-
-        $currentClass = Schedule::latest()->first();
-
-        $thisWeekPresent = Attendance::where('student_id', $student->id)
-            ->where('status', 'present')
-            ->whereBetween('created_at', [now()->startOfWeek(), now()->endOfWeek()])
-            ->count();
-
-        $thisMonthPresent = Attendance::where('student_id', $student->id)
-            ->where('status', 'present')
-            ->whereMonth('created_at', now()->month)
-            ->count();
+        $now = now('Asia/Manila');
+        $currentClass = $student->registeredSchedules()->get()->first(fn ($schedule) => in_array($now->format('l'), $schedule->days ?? [], true)
+            && $schedule->start_time <= $now->format('H:i:s')
+            && $schedule->end_time >= $now->format('H:i:s')
+        );
+        $todayAttendance = $currentClass ? $student->attendances()->where('schedule_id', $currentClass->id)
+            ->whereDate('attendance_date', $now->toDateString())->first() : null;
+        $present = $student->attendances()->whereRaw('LOWER(status) IN (?, ?)', ['present', 'late']);
 
         return response()->json([
-            'student' => [
-                'name' => $student->name,
-                'student_number' => $student->student_number ?? 'STU001',
-            ],
+            'student' => ['name' => $student->name, 'student_number' => $student->student_id],
             'gps_tracking' => [
-                'status' => 'Active',
-                'latitude' => '14.5995',
-                'longitude' => '120.9842',
+                // Current location is obtained exclusively by the browser.
+                'status' => 'Awaiting browser location',
+                'latitude' => null,
+                'longitude' => null,
             ],
-            'current_class' => $currentClass,
-            'attendance_status' => 'Attendance Confirmed',
-            'weekly_present' => $thisWeekPresent,
-            'monthly_present' => $thisMonthPresent,
+            'current_class' => $currentClass?->only(['id', 'subject', 'location', 'start_time', 'end_time', 'recording']),
+            'attendance_status' => $todayAttendance?->status,
+            'weekly_present' => (clone $present)->whereDate('attendance_date', '>=', $now->copy()->startOfWeek())
+                ->whereDate('attendance_date', '<=', $now)->count(),
+            'monthly_present' => (clone $present)->whereDate('attendance_date', '>=', $now->copy()->startOfMonth())
+                ->whereDate('attendance_date', '<=', $now)->count(),
         ]);
     }
 }
