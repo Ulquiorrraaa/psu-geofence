@@ -1,9 +1,11 @@
 FROM php:8.4-apache
 
-# Install OS dependencies for Laravel and Vite
+# Install OS dependencies, including GD library requirements for phpspreadsheet
 RUN apt-get update && apt-get install -y \
     libzip-dev zip unzip curl \
-    && docker-php-ext-install pdo_mysql zip
+    libpng-dev libjpeg-dev libfreetype6-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install pdo_mysql zip gd
 
 # Install Node.js (required to build Vite frontend assets)
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
@@ -21,9 +23,9 @@ RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf
 WORKDIR /var/www/html
 COPY . .
 
-# Install PHP packages
+# Install PHP packages and ignore local PHP 8.5 version locks
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-RUN composer install --no-dev --optimize-autoloader
+RUN composer install --no-dev --optimize-autoloader --ignore-platform-reqs
 
 # Install Node packages and compile frontend assets
 RUN npm install
