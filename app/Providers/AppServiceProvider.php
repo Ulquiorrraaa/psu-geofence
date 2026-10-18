@@ -11,6 +11,7 @@ use App\Observers\PortalActivityObserver;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\URL; // <-- 1. Added URL facade import
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
@@ -31,10 +32,15 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        
         if ($this->app->isProduction()) {
             // Production must use the built manifest, even if a local hot marker was copied.
             Vite::useHotFile(storage_path('framework/production-vite.hot'));
+            
+            // <-- 2. Force HTTPS for Render deployment
+            URL::forceScheme('https'); 
         }
+        
         foreach ([User::class, Schedule::class, Attendance::class, StudentRegistration::class, StudentRegistrationLink::class] as $model) {
             $model::observe(PortalActivityObserver::class);
         }
