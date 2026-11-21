@@ -14,6 +14,8 @@ bootstrap/ssr
 bootstrap/cache/*.php
 storage/**
 !storage/**/.gitignore
+!storage/certs
+!storage/certs/**
 database/*.sqlite
 database/*.sqlite-*
 auth.json
